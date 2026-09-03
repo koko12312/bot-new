@@ -3,6 +3,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ ./src/
-COPY users.db .
+
 COPY ShamQR.jpeg .
 CMD ["python", "src/main.py"]
