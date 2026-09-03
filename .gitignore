@@ -1,0 +1,31 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables
+.env
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+bot.log
+
+# Virtual Environments
+venv/
+env/
+.venv/
+.env_dir/
+
+# IDE files
+.vscode/
+.idea/
+
+# Downloaded files/Receipts
+downloads/
+ ShamQR.jpeg
+

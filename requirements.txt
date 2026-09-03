@@ -1,0 +1,6 @@
+python-telegram-bot[job-queue]>=20.0
+Flask>=2.0
+requests>=2.25
+python-dotenv>=0.19
+textverified>=1.0
+python-dateutil>=2.8
