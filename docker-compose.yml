@@ -1,16 +1,12 @@
 version: '3.8'
-
 services:
   bot:
     build: .
     container_name: whatsapp_rental_bot
     restart: unless-stopped
-    # Expose port 5000 for the Flask webhook server
     ports:
       - "5000:5000"
-    # Load environment variables from .env
     env_file:
       - .env
-    # Mount the database as a volume so data persists across container restarts
     volumes:
       - ./users.db:/app/users.db
