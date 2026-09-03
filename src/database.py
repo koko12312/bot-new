@@ -477,3 +477,39 @@ def resolve_user(target: str):
 def format_currency(value):
     return f"${value:.2f}"
 
+
+def get_all_users(sort_by: str = 'created_at', limit: int = 50):
+    conn = get_db_connection()
+    # Fallback to user_id if created_at is NULL to ensure all users show up in "Recent"
+    order_clause = "COALESCE(created_at, '') DESC, user_id DESC"
+    if sort_by == 'balance':
+        order_clause = "balance DESC, created_at DESC"
+    elif sort_by == 'id':
+        order_clause = "user_id ASC"
+        
+    rows = conn.execute(f"SELECT * FROM users ORDER BY {order_clause} LIMIT ?", (limit,)).fetchall()
+    conn.close()
+    return rows
+
+def format_user_profile(user, lang='en'):
+    s = STRINGS[lang]
+    name_display = user['first_name'] or s['label_unknown']
+    username_display = (" (@" + user['username'].replace('_', '\\_') + ")") if user['username'] else ""
+    
+    joined_date = user['created_at'][:10] if user['created_at'] else s['label_unknown']
+    
+    lines = [
+        f"{s['label_name']}: `{name_display}`{username_display}",
+        f"{s['label_id']}: `{user['user_id']}`",
+        f"{s['label_balance']}: {format_currency(user['balance'])}",
+        f"{s['label_joined']}: `{joined_date}`",
+        f"{s['label_ref_code']}: `{user['referral_code']}`",
+        f"{s['label_referrals']}: `{get_referral_count(user['user_id'])}`",
+        f"{s['label_rewards']}: `{user['referral_credit_given']}`"
+    ]
+    return "\n".join(lines)
+
+def is_admin(user_id: int):
+    return ADMIN_ID is not None and user_id == ADMIN_ID
+
+
