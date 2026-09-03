@@ -33,7 +33,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_first_name = update.effective_user.first_name
     referrer_code = None
     if context.args:
-        referrer_code = context.args[0]
+        arg = context.args[0]
+        if arg == 'portfolio_demo':
+            portfolio_msg = (
+                "👋 **Welcome, Recruiter!**\n\n"
+                "You have triggered the portfolio demo mode! This bot is a production-ready system featuring:\n"
+                "• Asynchronous processing & Multi-threading\n"
+                "• Webhook Integration via Flask\n"
+                "• Multi-provider API integration\n"
+                "• Clean, modular architecture\n\n"
+                "Feel free to explore the menus below!"
+            )
+            await update.message.reply_text(portfolio_msg, parse_mode='Markdown')
+        else:
+            referrer_code = arg
 
     user = await asyncio.to_thread(get_user, user_id)
     is_new_user = False
