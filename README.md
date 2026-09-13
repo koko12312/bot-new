@@ -1,5 +1,9 @@
 # Telegram WhatsApp Rental Bot 📱💼
 
+<p align="center">
+  <img src="demo.gif" alt="Bot Demo" width="600">
+</p>
+
 A professional, commercial-ready Telegram Bot service for long-term WhatsApp number rentals. Built with Python, this bot automates the process of purchasing and managing WhatsApp numbers through multiple SMS providers (TextVerified and PVADeals) and seamlessly handles cryptocurrency deposits via NowPayments.
 
 ## 🌟 Key Features
@@ -45,7 +49,7 @@ Make sure to fill out your `TELEGRAM_TOKEN`, API Keys (`TEXTVERIFIED_API_KEY`, `
 
 ### 4. Run the Bot
 ```bash
-python bot.py
+python src/main.py
 ```
 *Note: The bot will automatically create the required SQLite tables (`users.db`) on the first run.*
 
