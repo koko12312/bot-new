@@ -49,6 +49,7 @@ Make sure to fill out your `TELEGRAM_TOKEN`, API Keys (`TEXTVERIFIED_API_KEY`, `
 
 ### 4. Run the Bot
 ```bash
+python bot.py
 python src/main.py
 ```
 *Note: The bot will automatically create the required SQLite tables (`users.db`) on the first run.*
