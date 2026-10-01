@@ -241,6 +241,7 @@ async def poll_sms_code(verification_id: str, provider: str = 'tv', query=None, 
             
         if isinstance(sms_data, dict) and sms_data.get('code'):
             delivered_sms_id = sms_data.get('sms_id')
+            from database import mark_code_received_by_verification_id
             await asyncio.to_thread(mark_code_received_by_verification_id, verification_id, delivered_sms_id)
             return sms_data
         
@@ -283,6 +284,7 @@ def create_invoice(amount: float, user_id: int):
     
     if response.status_code == 200 or response.status_code == 201:
         data = response.json()
+        from database import add_deposit_record
         add_deposit_record(user_id, order_id, data.get('id'), amount, 'usd', '')
         return data
     else:
