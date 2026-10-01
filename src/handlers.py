@@ -277,7 +277,7 @@ async def mynumbers(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 expiry_date = expiry_dt.strftime('%Y-%m-%d')
                 
                 # Calculate time left
-                now = datetime.datetime.now(expiry_dt.tzinfo) if expiry_dt.tzinfo else datetime.datetime.now(datetime.UTC)
+                now = datetime.datetime.now(expiry_dt.tzinfo) if expiry_dt.tzinfo else datetime.datetime.now(datetime.timezone.utc)
                 diff = expiry_dt - now
                 
                 if diff.total_seconds() <= 0:
@@ -575,7 +575,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logging.warning(f"Manual add sync failed: {e}")
             
         if not expiry:
-            expiry = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=30)).isoformat()
+            expiry = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30)).isoformat()
             
         await asyncio.to_thread(add_number_record, target_user['user_id'], phone_number, verification_id, expires_at=expiry, status=status, provider=provider)
         
@@ -760,7 +760,7 @@ def sync_and_renew_worker(app: Application, loop: asyncio.AbstractEventLoop):
                             pass
                             
                     if tv_expiry_dt and num['auto_renew']:
-                        now = datetime.datetime.now(tv_expiry_dt.tzinfo) if tv_expiry_dt.tzinfo else datetime.datetime.now(datetime.UTC)
+                        now = datetime.datetime.now(tv_expiry_dt.tzinfo) if tv_expiry_dt.tzinfo else datetime.datetime.now(datetime.timezone.utc)
                         time_diff = tv_expiry_dt - now
                         if time_diff.total_seconds() <= 86400: # <= 24 hours
                             if user['balance'] < SERVICE_PRICE:
@@ -880,7 +880,7 @@ def sync_and_renew_worker(app: Application, loop: asyncio.AbstractEventLoop):
                             if server_expiry:
                                 import dateutil.parser
                                 server_expiry_dt = dateutil.parser.parse(server_expiry)
-                                now = datetime.datetime.now(server_expiry_dt.tzinfo) if server_expiry_dt.tzinfo else datetime.datetime.now(datetime.UTC)
+                                now = datetime.datetime.now(server_expiry_dt.tzinfo) if server_expiry_dt.tzinfo else datetime.datetime.now(datetime.timezone.utc)
                                 
                                 # --- PROACTIVE SAFETY CHECK (1 day before) ---
                                 # If expiring within 24h, auto-renew is ON, but balance is low -> TURN OFF server side
@@ -1126,7 +1126,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     expiry_date = expiry_dt.strftime('%Y-%m-%d')
                     
                     # Calculate time left
-                    now = datetime.datetime.now(expiry_dt.tzinfo) if expiry_dt.tzinfo else datetime.datetime.now(datetime.UTC)
+                    now = datetime.datetime.now(expiry_dt.tzinfo) if expiry_dt.tzinfo else datetime.datetime.now(datetime.timezone.utc)
                     diff = expiry_dt - now
                     
                     if diff.total_seconds() <= 0:
@@ -1882,7 +1882,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                     logging.warning(f"Manual sync failed: {e}")
                 
                 if not expiry:
-                    expiry = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=30)).isoformat()
+                    expiry = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30)).isoformat()
                 
                 await asyncio.to_thread(add_number_record, t_id, num, v_id, expires_at=expiry, status=status, provider=provider)
                 await update.effective_message.reply_text(

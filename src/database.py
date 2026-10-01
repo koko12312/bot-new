@@ -14,7 +14,7 @@ def get_db_connection():
     return conn
 
 def get_timestamp():
-    return datetime.datetime.now(datetime.UTC).isoformat()
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 def init_db():
     conn = get_db_connection()

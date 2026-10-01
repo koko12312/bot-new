@@ -118,7 +118,7 @@ def purchase_number(service_name, user_tag=None):
             
             # Fallback if billing cycle fetch fails
             if not expiry:
-                expiry = (datetime.datetime.now(datetime.UTC) + datetime.timedelta(days=30)).isoformat()
+                expiry = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30)).isoformat()
             
             return {
                 "id": details.id,
@@ -263,7 +263,7 @@ def build_referral_link(user):
 # --- NOWPAYMENTS HELPERS ---
 
 def create_invoice(amount: float, user_id: int):
-    order_id = f"ORDER_{user_id}_{int(datetime.datetime.now(datetime.UTC).timestamp())}"
+    order_id = f"ORDER_{user_id}_{int(datetime.datetime.now(datetime.timezone.utc).timestamp())}"
     
     payload = {
         "price_amount": amount,
