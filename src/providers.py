@@ -2,6 +2,7 @@ import requests
 import textverified
 import logging
 import datetime
+import re
 from textverified.data.dtypes import NumberType, ReservationType, ReservationCapability, RentalDuration
 from config import *
 
@@ -77,7 +78,7 @@ def get_services():
         logging.error(f"Error fetching services: {e}")
         return []
 
-def purchase_number(service_name):
+def purchase_number(service_name, user_tag=None):
     try:
         # Creating a 30-day renewable rental as requested (long-term rent)
         sale = textverified.reservations.create(
@@ -94,6 +95,15 @@ def purchase_number(service_name):
         # A sale can contain multiple reservations, we take the first one
         if sale.reservations:
             res = sale.reservations[0]
+
+            # Tag reservation on TextVerified with user note/tag
+            if user_tag:
+                try:
+                    textverified.reservations.update_renewable(res.id, user_notes=str(user_tag))
+                    logging.info(f"Tagged TextVerified reservation {res.id} with '{user_tag}'")
+                except Exception as e:
+                    logging.warning(f"Could not tag reservation {res.id} with {user_tag}: {e}")
+
             # Get full details of the newly created reservation
             details = textverified.reservations.details(res.id)
             
@@ -127,36 +137,57 @@ def normalize_phone(n):
     digits = ''.join(c for c in str(n) if c.isdigit())
     return digits[-10:] if len(digits) >= 10 else digits
 
-def get_sms_tv(reservation_id, min_timestamp=None):
+def get_sms_tv(reservation_id, min_timestamp=None, phone_number=None):
     try:
-        details = textverified.reservations.details(reservation_id)
-        target_num = normalize_phone(details.number)
-        messages = textverified.sms.list()
-        count = 0
+        target_num = normalize_phone(phone_number)
+        state_value = "active"
+
+        # If phone_number was not provided, fetch details as fallback
+        if not target_num:
+            details = textverified.reservations.details(reservation_id)
+            target_num = normalize_phone(details.number)
+            state_value = getattr(details.state, 'value', str(details.state))
+
+        # Query messages filtered directly by destination number (10-digit format expected by TextVerified)
+        messages = textverified.sms.list(to_number=target_num) if target_num else textverified.sms.list()
+        
         for msg in messages:
             msg_num = normalize_phone(getattr(msg, 'to_value', ''))
-            if msg_num == target_num:
-                msg_created = getattr(msg, 'created_at', None)
-                if min_timestamp and msg_created:
-                    if min_timestamp.tzinfo is None:
-                        min_timestamp = min_timestamp.replace(tzinfo=datetime.timezone.utc)
-                    if msg_created.tzinfo is None:
-                        msg_created = msg_created.replace(tzinfo=datetime.timezone.utc)
-                    if msg_created < (min_timestamp - datetime.timedelta(seconds=5)):
-                        count += 1
-                        if count >= 30:
-                            break
-                        continue
+            if target_num and msg_num != target_num:
+                continue
 
+            msg_created = getattr(msg, 'created_at', None)
+            if min_timestamp and msg_created:
+                if min_timestamp.tzinfo is None:
+                    min_timestamp = min_timestamp.replace(tzinfo=datetime.timezone.utc)
+                if msg_created.tzinfo is None:
+                    msg_created = msg_created.replace(tzinfo=datetime.timezone.utc)
+                # Allow a generous window (10 minutes before request) to catch codes requested right before tapping check
+                if msg_created < (min_timestamp - datetime.timedelta(minutes=10)):
+                    continue
+
+            # Extract code (either parsed by TextVerified or extracted via regex from sms_content)
+            code = getattr(msg, 'parsed_code', None)
+            sms_content = getattr(msg, 'sms_content', '') or ''
+            
+            if not code and sms_content:
+                # Regex match for common WhatsApp verification code patterns: 123-456, 123 456, or 4-8 digits
+                match = re.search(r'\b(\d{3}[-\s]?\d{3})\b', sms_content)
+                if match:
+                    code = match.group(1).replace(' ', '-')
+                else:
+                    match_num = re.search(r'\b(\d{4,8})\b', sms_content)
+                    if match_num:
+                        code = match_num.group(1)
+
+            if code or sms_content:
                 return {
-                    "code": msg.parsed_code,
-                    "sms": msg.sms_content,
-                    "status": details.state.value
+                    "code": code,
+                    "sms": sms_content,
+                    "status": state_value
                 }
-            count += 1
-            if count >= 30:
-                break
-        return {"code": None, "sms": None, "status": details.state.value}
+
+        return {"code": None, "sms": None, "status": state_value}
     except Exception as e:
         logging.error(f"Error getting TV SMS: {e}")
         return None
@@ -209,7 +240,7 @@ async def poll_sms_code(verification_id: str, provider: str = 'tv', query=None, 
                     pass
         
         if provider in ['tv', 'textverified']:
-            sms_data = await asyncio.to_thread(get_sms_tv, verification_id, min_timestamp)
+            sms_data = await asyncio.to_thread(get_sms_tv, verification_id, min_timestamp, number_str)
         else:
             sms_data = await asyncio.to_thread(get_sms_pva, verification_id)
             

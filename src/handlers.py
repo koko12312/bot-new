@@ -187,7 +187,11 @@ async def process_rent(update: Update, context: ContextTypes.DEFAULT_TYPE, provi
         if not whatsapp_targets:
             await query.edit_message_text(s['rent_no_service'])
             return
-        order = await asyncio.to_thread(purchase_number, whatsapp_targets[0]['id'])
+        
+        # Tag reservation on TextVerified with user's Telegram username
+        username = update.effective_user.username or (user['username'] if user else None)
+        user_tag = f"@{username}" if username else f"User_{user_id}"
+        order = await asyncio.to_thread(purchase_number, whatsapp_targets[0]['id'], user_tag)
     else:
         # PVADeals logic
         try:
