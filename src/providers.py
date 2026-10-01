@@ -137,7 +137,7 @@ def normalize_phone(n):
     digits = ''.join(c for c in str(n) if c.isdigit())
     return digits[-10:] if len(digits) >= 10 else digits
 
-def get_sms_tv(reservation_id, min_timestamp=None, phone_number=None):
+def get_sms_tv(reservation_id, phone_number=None, last_sms_id=None):
     try:
         target_num = normalize_phone(phone_number)
         state_value = "active"
@@ -156,15 +156,11 @@ def get_sms_tv(reservation_id, min_timestamp=None, phone_number=None):
             if target_num and msg_num != target_num:
                 continue
 
-            msg_created = getattr(msg, 'created_at', None)
-            if min_timestamp and msg_created:
-                if min_timestamp.tzinfo is None:
-                    min_timestamp = min_timestamp.replace(tzinfo=datetime.timezone.utc)
-                if msg_created.tzinfo is None:
-                    msg_created = msg_created.replace(tzinfo=datetime.timezone.utc)
-                # Allow a generous window (10 minutes before request) to catch codes requested right before tapping check
-                if msg_created < (min_timestamp - datetime.timedelta(minutes=10)):
-                    continue
+            msg_id = getattr(msg, 'id', None)
+            
+            # If we already delivered this specific message to the user, stop searching (messages are newest first)
+            if last_sms_id and msg_id == last_sms_id:
+                break
 
             # Extract code (either parsed by TextVerified or extracted via regex from sms_content)
             code = getattr(msg, 'parsed_code', None)
@@ -184,10 +180,11 @@ def get_sms_tv(reservation_id, min_timestamp=None, phone_number=None):
                 return {
                     "code": code,
                     "sms": sms_content,
+                    "sms_id": msg_id,
                     "status": state_value
                 }
 
-        return {"code": None, "sms": None, "status": state_value}
+        return {"code": None, "sms": None, "sms_id": None, "status": state_value}
     except Exception as e:
         logging.error(f"Error getting TV SMS: {e}")
         return None
@@ -204,19 +201,17 @@ def get_sms_pva(request_id):
         return {
             "code": code,
             "sms": sms_text,
+            "sms_id": None,
             "status": "active"
         }
     except Exception as e:
         logging.error(f"Error getting PVA SMS: {e}")
         return None
 
-async def poll_sms_code(verification_id: str, provider: str = 'tv', query=None, number_str: str = '', lang: str = 'en', min_timestamp=None):
+async def poll_sms_code(verification_id: str, provider: str = 'tv', query=None, number_str: str = '', lang: str = 'en', min_timestamp=None, last_sms_id=None):
     sms_data = None
     total_seconds = SMS_POLL_ATTEMPTS * SMS_POLL_DELAY
     last_text = ""
-    
-    if min_timestamp is None:
-        min_timestamp = datetime.datetime.now(datetime.timezone.utc)
 
     for attempt in range(SMS_POLL_ATTEMPTS):
         time_remaining = max(0, total_seconds - (attempt * SMS_POLL_DELAY))
@@ -240,12 +235,13 @@ async def poll_sms_code(verification_id: str, provider: str = 'tv', query=None, 
                     pass
         
         if provider in ['tv', 'textverified']:
-            sms_data = await asyncio.to_thread(get_sms_tv, verification_id, min_timestamp, number_str)
+            sms_data = await asyncio.to_thread(get_sms_tv, verification_id, number_str, last_sms_id)
         else:
             sms_data = await asyncio.to_thread(get_sms_pva, verification_id)
             
         if isinstance(sms_data, dict) and sms_data.get('code'):
-            await asyncio.to_thread(mark_code_received_by_verification_id, verification_id)
+            delivered_sms_id = sms_data.get('sms_id')
+            await asyncio.to_thread(mark_code_received_by_verification_id, verification_id, delivered_sms_id)
             return sms_data
         
         if attempt < SMS_POLL_ATTEMPTS - 1:

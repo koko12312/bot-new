@@ -57,7 +57,8 @@ def init_db():
             expires_at TEXT,
             provider TEXT DEFAULT 'textverified',
             code_requested INTEGER DEFAULT 0,
-            code_received INTEGER DEFAULT 0
+            code_received INTEGER DEFAULT 0,
+            last_sms_id TEXT
         )
     ''')
     # Update existing table if provider column missing
@@ -71,6 +72,10 @@ def init_db():
         pass # Column already exists
     try:
         c.execute("ALTER TABLE numbers ADD COLUMN code_received INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass # Column already exists
+    try:
+        c.execute("ALTER TABLE numbers ADD COLUMN last_sms_id TEXT")
     except sqlite3.OperationalError:
         pass # Column already exists
     c.execute('''
@@ -404,9 +409,12 @@ def mark_code_requested(number_id: int):
     conn.commit()
     conn.close()
 
-def mark_code_received_by_verification_id(verification_id: str):
+def mark_code_received_by_verification_id(verification_id: str, sms_id: str = None):
     conn = get_db_connection()
-    conn.execute("UPDATE numbers SET code_received = 1 WHERE verification_id = ?", (verification_id,))
+    if sms_id:
+        conn.execute("UPDATE numbers SET code_received = 1, last_sms_id = ? WHERE verification_id = ?", (sms_id, verification_id))
+    else:
+        conn.execute("UPDATE numbers SET code_received = 1 WHERE verification_id = ?", (verification_id,))
     conn.commit()
     conn.close()
 

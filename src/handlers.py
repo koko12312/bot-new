@@ -1470,13 +1470,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if action == 'code':
             request_time = datetime.datetime.now(datetime.timezone.utc)
             await asyncio.to_thread(mark_code_requested, number_row['id'])
+            num_dict = dict(number_row)
+            last_sms_id = num_dict.get('last_sms_id')
             sms_data = await poll_sms_code(
                 number_row['verification_id'], 
-                provider=dict(number_row).get('provider', 'tv'),
+                provider=num_dict.get('provider', 'tv'),
                 query=query,
                 number_str=number_row['number'],
                 lang=admin_lang,
-                min_timestamp=request_time
+                min_timestamp=request_time,
+                last_sms_id=last_sms_id
             )
 
             if sms_data and sms_data.get('code'):
@@ -1700,13 +1703,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         request_time = datetime.datetime.now(datetime.timezone.utc)
         await asyncio.to_thread(mark_code_requested, number_id)
+        num_dict = dict(number_row)
+        last_sms_id = num_dict.get('last_sms_id')
         sms_data = await poll_sms_code(
             number_row['verification_id'], 
-            provider=dict(number_row).get('provider', 'tv'),
+            provider=num_dict.get('provider', 'tv'),
             query=query,
             number_str=number_row['number'],
             lang=lang,
-            min_timestamp=request_time
+            min_timestamp=request_time,
+            last_sms_id=last_sms_id
         )
 
         if sms_data and sms_data.get('code'):
