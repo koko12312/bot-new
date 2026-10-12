@@ -101,11 +101,16 @@ def init_db():
             receipt_file_id TEXT,
             status TEXT DEFAULT 'pending',
             created_at TEXT,
-            updated_at TEXT
+            updated_at TEXT,
+            receipt_file_type TEXT DEFAULT 'document'
         )
     ''')
     try:
         c.execute("ALTER TABLE manual_deposits ADD COLUMN referral_rewarded INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass # Column already exists
+    try:
+        c.execute("ALTER TABLE manual_deposits ADD COLUMN receipt_file_type TEXT DEFAULT 'document'")
     except sqlite3.OperationalError:
         pass # Column already exists
     conn.commit()

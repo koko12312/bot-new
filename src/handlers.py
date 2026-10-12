@@ -405,10 +405,19 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = user['language'] or 'en'
     s = STRINGS[lang]
     
-    if context.user_data and context.user_data.get('user_action') == 'shamcash_pdf':
-        doc = update.message.document
-        if doc.mime_type != 'application/pdf':
-            await update.effective_message.reply_text("❌ Please upload the receipt as a **PDF file**.")
+    if context.user_data and context.user_data.get('user_action') in ['shamcash_receipt', 'shamcash_pdf']:
+        receipt_file_id = None
+        receipt_file_type = 'document'
+        
+        if update.message.photo:
+            receipt_file_id = update.message.photo[-1].file_id
+            receipt_file_type = 'photo'
+        elif update.message.document:
+            receipt_file_id = update.message.document.file_id
+            receipt_file_type = 'document'
+            
+        if not receipt_file_id:
+            await update.effective_message.reply_text("❌ Please upload your payment receipt as a photo, screenshot, or document.")
             return
             
         amt = context.user_data.pop('sham_amt')
@@ -418,8 +427,8 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         def save_sham_request():
             conn = get_db_connection()
             conn.execute(
-                "INSERT INTO manual_deposits (user_id, amount, receipt_file_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-                (user_id, amt, doc.file_id, get_timestamp(), get_timestamp())
+                "INSERT INTO manual_deposits (user_id, amount, receipt_file_id, created_at, updated_at, receipt_file_type) VALUES (?, ?, ?, ?, ?, ?)",
+                (user_id, amt, receipt_file_id, get_timestamp(), get_timestamp(), receipt_file_type)
             )
             conn.commit()
             conn.close()
@@ -438,7 +447,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
-    await update.effective_message.reply_text("I didn't expect a document. Use the menu or /help.")
+    await update.effective_message.reply_text("I didn't expect a document or photo. Use the menu or /help.")
 
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -1326,22 +1335,46 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💰 *Amount:* {format_currency(req['amount'])}\n"
             f"📅 *Date:* `{req['created_at'][:19]}`\n"
             f"🆔 *Request ID:* `{req['id']}`\n\n"
-            "The receipt (PDF) has been sent below.",
+            "The payment receipt proof has been sent below.",
             reply_markup=reply_markup,
             parse_mode='Markdown'
         )
         
+        file_type = req['receipt_file_type'] if 'receipt_file_type' in req.keys() and req['receipt_file_type'] else 'document'
+        caption_text = f"Receipt for User {user_name} - {format_currency(req['amount'])}"
+        
         try:
-            await context.bot.send_document(
-                chat_id=ADMIN_ID, 
-                document=req['receipt_file_id'], 
-                caption=f"Receipt for User {user_name} - {format_currency(req['amount'])}"
-            )
+            if file_type == 'photo':
+                try:
+                    await context.bot.send_photo(
+                        chat_id=ADMIN_ID,
+                        photo=req['receipt_file_id'],
+                        caption=caption_text
+                    )
+                except Exception:
+                    await context.bot.send_document(
+                        chat_id=ADMIN_ID,
+                        document=req['receipt_file_id'],
+                        caption=caption_text
+                    )
+            else:
+                try:
+                    await context.bot.send_document(
+                        chat_id=ADMIN_ID, 
+                        document=req['receipt_file_id'], 
+                        caption=caption_text
+                    )
+                except Exception:
+                    await context.bot.send_photo(
+                        chat_id=ADMIN_ID,
+                        photo=req['receipt_file_id'],
+                        caption=caption_text
+                    )
         except Exception as e:
-            logging.error(f"Failed to send PDF receipt: {e}")
+            logging.error(f"Failed to send receipt: {e}")
             await context.bot.send_message(
                 chat_id=ADMIN_ID,
-                text=f"❌ Failed to display receipt document on Telegram: {e}"
+                text=f"❌ Failed to display receipt on Telegram: {e}"
             )
         return
 
@@ -1780,7 +1813,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                     )
                 
                 await update.effective_message.reply_text(s['shamcash_receipt'], parse_mode='Markdown')
-                context.user_data['user_action'] = 'shamcash_pdf'
+                context.user_data['user_action'] = 'shamcash_receipt'
             except ValueError:
                 await update.effective_message.reply_text("❌ Please enter a valid number.")
             return

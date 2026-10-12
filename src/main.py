@@ -30,7 +30,7 @@ async def main_async():
     app.add_handler(CommandHandler('help', help_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
-    app.add_handler(MessageHandler(filters.Document.PDF, handle_document))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, handle_document))
     
     await app.initialize()
     await app.start()
@@ -71,7 +71,7 @@ def main_polling():
     app.add_handler(CommandHandler('help', help_command))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
-    app.add_handler(MessageHandler(filters.Document.PDF, handle_document))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, handle_document))
     
     logging.info("Bot is securely running with long polling...")
     
