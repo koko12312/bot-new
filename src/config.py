@@ -190,4 +190,4 @@ STRINGS = {
 }
 
 
-DB_FILE = os.path.join(os.path.dirname(__file__), '../users.db')
+DB_FILE = os.getenv("DB_FILE", os.path.join(os.path.dirname(__file__), '../users.db'))

@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: telegram-bot
+    env: docker
+    plan: starter
+    healthCheckPath: /webhook/telegram
+    disk:
+      name: bot-data
+      mountPath: /app/data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: DB_FILE
+        value: /app/data/users.db
+      - key: TELEGRAM_TOKEN
+        sync: false
+      - key: TELEGRAM_WEBHOOK_URL
+        sync: false
+      - key: TEXTVERIFIED_API_KEY
+        sync: false
+      - key: TEXTVERIFIED_USERNAME
+        sync: false
+      - key: NOWPAYMENTS_API_KEY
+        sync: false
+      - key: NOWPAYMENTS_IPN_SECRET
+        sync: false
+      - key: IPN_CALLBACK_URL
+        sync: false
+      - key: PVADEALS_API_KEY
+        sync: false
+      - key: ADMIN_ID
+        sync: false
+      - key: SERVICE_PRICE
+        value: "12.00"
+      - key: PVADEALS_PRICE
+        value: "12.00"
+      - key: REFERRAL_BONUS
+        value: "2.00"
+      - key: USE_SANDBOX
+        value: "false"

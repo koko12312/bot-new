@@ -5,4 +5,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ ./src/
 
 COPY ShamQR.jpeg .
+RUN mkdir -p /app/data
 CMD ["python", "src/main.py"]
