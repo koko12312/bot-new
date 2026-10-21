@@ -59,6 +59,8 @@ NP_API_KEY = os.getenv("NOWPAYMENTS_API_KEY")
 NP_IPN_SECRET = os.getenv("NOWPAYMENTS_IPN_SECRET")
 NP_BASE_URL = "https://api.sandbox.nowpayments.io/v1" if USE_SANDBOX else "https://api.nowpayments.io/v1"
 
+DATABASE_URL = os.getenv("DATABASE_URL")
+
 if not TELEGRAM_TOKEN or not TV_API_KEY or not NP_API_KEY or not NP_IPN_SECRET:
     raise ValueError("CRITICAL ERROR: Missing credentials! Check your .env file.")
 

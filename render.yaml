@@ -7,6 +7,8 @@ services:
     envVars:
       - key: PORT
         value: 10000
+      - key: DATABASE_URL
+        sync: false
       - key: TELEGRAM_TOKEN
         sync: false
       - key: TELEGRAM_WEBHOOK_URL

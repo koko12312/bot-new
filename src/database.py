@@ -6,9 +6,78 @@ import textverified
 from config import *
 from providers import pva_client
 
+try:
+    import psycopg2
+    import psycopg2.extras
+    HAVE_PSYCOPG2 = True
+except ImportError:
+    HAVE_PSYCOPG2 = False
+
+class PGRow(dict):
+    """Row object that mimics sqlite3.Row supporting both key and index access."""
+    def __init__(self, cursor, row):
+        super().__init__()
+        self._list = list(row)
+        for idx, col in enumerate(cursor.description):
+            self[col.name] = row[idx]
+    def __getitem__(self, item):
+        if isinstance(item, int):
+            return self._list[item]
+        return super().__getitem__(item)
+    def keys(self):
+        return super().keys()
+
+class PGConnection:
+    """Connection wrapper that translates SQLite syntax to PostgreSQL."""
+    def __init__(self, raw_conn):
+        self._conn = raw_conn
+    def cursor(self):
+        return PGCursor(self._conn.cursor())
+    def execute(self, sql, params=None):
+        cur = self.cursor()
+        cur.execute(sql, params)
+        return cur
+    def commit(self):
+        self._conn.commit()
+    def close(self):
+        self._conn.close()
+
+class PGCursor:
+    def __init__(self, raw_cursor):
+        self._cur = raw_cursor
+    def execute(self, sql, params=None):
+        sql = sql.replace('?', '%s')
+        if 'INSERT OR IGNORE INTO' in sql:
+            sql = sql.replace('INSERT OR IGNORE INTO', 'INSERT INTO')
+            if 'ON CONFLICT' not in sql:
+                sql += ' ON CONFLICT DO NOTHING'
+        self._cur.execute(sql, params or ())
+        return self
+    def fetchone(self):
+        row = self._cur.fetchone()
+        if row is None:
+            return None
+        return PGRow(self._cur, row)
+    def fetchall(self):
+        rows = self._cur.fetchall()
+        return [PGRow(self._cur, r) for r in rows]
+    @property
+    def rowcount(self):
+        return self._cur.rowcount
+    def close(self):
+        self._cur.close()
+
 # --- DATABASE HELPERS ---
 
 def get_db_connection():
+    if DATABASE_URL and HAVE_PSYCOPG2:
+        try:
+            # If internal render host or local host, connect with appropriate sslmode
+            sslmode = "require" if "render.com" in DATABASE_URL else "prefer"
+            raw = psycopg2.connect(DATABASE_URL, sslmode=sslmode)
+            return PGConnection(raw)
+        except Exception as e:
+            logging.error(f"Failed to connect to PostgreSQL ({e}), falling back to SQLite.")
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
@@ -17,6 +86,77 @@ def get_timestamp():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 def init_db():
+    if DATABASE_URL and HAVE_PSYCOPG2:
+        try:
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    user_id BIGINT PRIMARY KEY,
+                    balance DOUBLE PRECISION DEFAULT 0.0,
+                    username TEXT,
+                    referrer_id BIGINT,
+                    referral_code TEXT UNIQUE,
+                    referral_credit_given INTEGER DEFAULT 0,
+                    created_at TEXT,
+                    updated_at TEXT,
+                    language TEXT DEFAULT 'en',
+                    first_name TEXT
+                )
+            ''')
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS numbers (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT,
+                    number TEXT,
+                    verification_id TEXT,
+                    service TEXT,
+                    status TEXT,
+                    created_at TEXT,
+                    last_checked TEXT,
+                    auto_renew INTEGER DEFAULT 1,
+                    expires_at TEXT,
+                    provider TEXT DEFAULT 'textverified',
+                    code_requested INTEGER DEFAULT 0,
+                    code_received INTEGER DEFAULT 0,
+                    last_sms_id TEXT
+                )
+            ''')
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS deposits (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT,
+                    order_id TEXT UNIQUE,
+                    invoice_id TEXT,
+                    amount DOUBLE PRECISION,
+                    price_currency TEXT,
+                    pay_currency TEXT,
+                    status TEXT,
+                    referral_rewarded INTEGER DEFAULT 0,
+                    created_at TEXT,
+                    updated_at TEXT
+                )
+            ''')
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS manual_deposits (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT,
+                    amount DOUBLE PRECISION,
+                    receipt_file_id TEXT,
+                    status TEXT DEFAULT 'pending',
+                    created_at TEXT,
+                    updated_at TEXT,
+                    receipt_file_type TEXT DEFAULT 'document',
+                    referral_rewarded INTEGER DEFAULT 0
+                )
+            ''')
+            conn.commit()
+            conn.close()
+            logging.info("PostgreSQL database initialized successfully.")
+            return
+        except Exception as e:
+            logging.error(f"PostgreSQL init failed ({e}), trying SQLite fallback.")
+
     conn = get_db_connection()
     c = conn.cursor()
     c.execute('''
