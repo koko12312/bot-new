@@ -67,9 +67,15 @@ def nowpayments_webhook():
         
     return jsonify({"status": "success"}), 200
 
-@app_flask.route('/webhook/telegram', methods=['POST'])
+@app_flask.route('/', methods=['GET'])
+def health_check():
+    return jsonify({"status": "healthy", "service": "telegram-bot"}), 200
+
+@app_flask.route('/webhook/telegram', methods=['GET', 'POST'])
 def telegram_webhook():
-    
+    if request.method == 'GET':
+        return jsonify({"status": "ok", "message": "Telegram webhook endpoint ready"}), 200
+        
     if not telegram_app or not telegram_bot_loop:
         logging.warning("Telegram webhook received but bot is not initialized.")
         return jsonify({"error": "Bot not initialized"}), 503

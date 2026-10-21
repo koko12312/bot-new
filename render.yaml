@@ -2,17 +2,11 @@ services:
   - type: web
     name: telegram-bot
     env: docker
-    plan: starter
-    healthCheckPath: /webhook/telegram
-    disk:
-      name: bot-data
-      mountPath: /app/data
-      sizeGB: 1
+    plan: free
+    healthCheckPath: /
     envVars:
       - key: PORT
         value: 10000
-      - key: DB_FILE
-        value: /app/data/users.db
       - key: TELEGRAM_TOKEN
         sync: false
       - key: TELEGRAM_WEBHOOK_URL
