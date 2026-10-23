@@ -771,9 +771,9 @@ def sync_and_renew_worker(app: Application, loop: asyncio.AbstractEventLoop):
                     if tv_expiry_dt and num['auto_renew']:
                         now = datetime.datetime.now(tv_expiry_dt.tzinfo) if tv_expiry_dt.tzinfo else datetime.datetime.now(datetime.timezone.utc)
                         time_diff = tv_expiry_dt - now
-                        if time_diff.total_seconds() <= 86400: # <= 24 hours
+                        if time_diff.total_seconds() <= 259200: # <= 3 days (72 hours)
                             if user['balance'] < SERVICE_PRICE:
-                                logging.warning(f"Low balance for TV {num['number']}. Disabling server-side auto-renew.")
+                                logging.warning(f"Low balance for TV {num['number']}. Disabling server-side auto-renew (3 days notice).")
                                 try:
                                     textverified.reservations.update_renewable(verification_id, include_for_renewal=False)
                                     update_auto_renew(num['id'], user_id, 0)
@@ -781,9 +781,15 @@ def sync_and_renew_worker(app: Application, loop: asyncio.AbstractEventLoop):
                                     num['auto_renew'] = 0
                                     
                                     warning_msg = (
-                                        f"⚠️ *Auto-Renewal Warning!*\n\nAuto-renew is disabled and subscription will be cancelled in 1 day for `+{num['number']}`."
+                                        f"⚠️ *Auto-Renewal & Recharge Notice!*\n\n"
+                                        f"Your balance is too low to auto-renew `+{num['number']}` ({format_currency(SERVICE_PRICE)} required).\n"
+                                        f"Auto-renew has been disabled and your subscription will expire in 3 days.\n\n"
+                                        f"👉 Please use /deposit to add funds and re-enable auto-renew in /mynumbers if you wish to keep this number active."
                                         if lang == 'en' else
-                                        f"⚠️ *تحذير التجديد التلقائي!*\n\nتم تعطيل التجديد التلقائي وسيتم إلغاء الاشتراك خلال يوم واحد للرقم `+{num['number']}`."
+                                        f"⚠️ *تنبيه شحن الرصيد والتجديد التلقائي!*\n\n"
+                                        f"رصيدك الحالي غير كافٍ لتجديد الرقم `+{num['number']}` (المطلوب: {format_currency(SERVICE_PRICE)}).\n"
+                                        f"تم إيقاف التجديد التلقائي وسينتهي الاشتراك خلال 3 أيام.\n\n"
+                                        f"👉 يرجى استخدام /deposit لشحن الرصيد ثم إعادة تفعيل التجديد التلقائي من /mynumbers للاحتفاظ بالرقم."
                                     )
                                     asyncio.run_coroutine_threadsafe(
                                         app.bot.send_message(chat_id=user_id, text=warning_msg, parse_mode='Markdown'),
@@ -829,9 +835,15 @@ def sync_and_renew_worker(app: Application, loop: asyncio.AbstractEventLoop):
                                         update_auto_renew(num['id'], user_id, 0)
                                         
                                         warning_msg = (
-                                            f"⚠️ *Auto-Renewal Warning!*\n\nAuto-renew is disabled and subscription will be cancelled in 1 day for `+{num['number']}`."
+                                            f"⚠️ *Auto-Renewal & Recharge Notice!*\n\n"
+                                            f"Your balance is too low to auto-renew `+{num['number']}` ({format_currency(SERVICE_PRICE)} required).\n"
+                                            f"Auto-renew has been disabled and your subscription will expire in 3 days.\n\n"
+                                            f"👉 Please use /deposit to add funds and re-enable auto-renew in /mynumbers if you wish to keep this number active."
                                             if lang == 'en' else
-                                            f"⚠️ *تحذير التجديد التلقائي!*\n\nتم تعطيل التجديد التلقائي وسيتم إلغاء الاشتراك خلال يوم واحد للرقم `+{num['number']}`."
+                                            f"⚠️ *تنبيه شحن الرصيد والتجديد التلقائي!*\n\n"
+                                            f"رصيدك الحالي غير كافٍ لتجديد الرقم `+{num['number']}` (المطلوب: {format_currency(SERVICE_PRICE)}).\n"
+                                            f"تم إيقاف التجديد التلقائي وسينتهي الاشتراك خلال 3 أيام.\n\n"
+                                            f"👉 يرجى استخدام /deposit لشحن الرصيد ثم إعادة تفعيل التجديد التلقائي من /mynumbers للاحتفاظ بالرقم."
                                         )
                                         
                                         asyncio.run_coroutine_threadsafe(
@@ -891,15 +903,15 @@ def sync_and_renew_worker(app: Application, loop: asyncio.AbstractEventLoop):
                                 server_expiry_dt = dateutil.parser.parse(server_expiry)
                                 now = datetime.datetime.now(server_expiry_dt.tzinfo) if server_expiry_dt.tzinfo else datetime.datetime.now(datetime.timezone.utc)
                                 
-                                # --- PROACTIVE SAFETY CHECK (1 day before) ---
-                                # If expiring within 24h, auto-renew is ON, but balance is low -> TURN OFF server side
+                                # --- PROACTIVE SAFETY CHECK (3 days before) ---
+                                # If expiring within 72h (3 days), auto-renew is ON, but balance is low -> TURN OFF server side
                                 user = get_user(user_id)
                                 lang = user['language'] or 'en'
                                 time_diff = server_expiry_dt - now
                                 
-                                if time_diff.total_seconds() <= 86400 and num['auto_renew']:
+                                if time_diff.total_seconds() <= 259200 and num['auto_renew']:
                                     if user['balance'] < PVADEALS_PRICE:
-                                        logging.warning(f"Low balance for PVA {num['number']}. Disabling server-side auto-renew.")
+                                        logging.warning(f"Low balance for PVA {num['number']}. Disabling server-side auto-renew (3 days notice).")
                                         try:
                                             pva_client.set_auto_renew(verification_id, False)
                                             update_auto_renew(num['id'], user_id, 0)
@@ -907,9 +919,15 @@ def sync_and_renew_worker(app: Application, loop: asyncio.AbstractEventLoop):
                                             num['auto_renew'] = 0
                                             
                                             warning_msg = (
-                                                f"⚠️ *Auto-Renewal Warning!*\n\nAuto-renew is disabled and subscription will be cancelled in 1 day for `+{num['number']}`."
+                                                f"⚠️ *Auto-Renewal & Recharge Notice!*\n\n"
+                                                f"Your balance is too low to auto-renew `+{num['number']}` (Basic - {format_currency(PVADEALS_PRICE)} required).\n"
+                                                f"Auto-renew has been disabled and your subscription will expire in 3 days.\n\n"
+                                                f"👉 Please use /deposit to add funds and re-enable auto-renew in /mynumbers if you wish to keep this number active."
                                                 if lang == 'en' else
-                                                f"⚠️ *تحذير التجديد التلقائي!*\n\nتم تعطيل التجديد التلقائي وسيتم إلغاء الاشتراك خلال يوم واحد للرقم `+{num['number']}`."
+                                                f"⚠️ *تنبيه شحن الرصيد والتجديد التلقائي!*\n\n"
+                                                f"رصيدك الحالي غير كافٍ لتجديد الرقم `+{num['number']}` (عادي - المطلوب: {format_currency(PVADEALS_PRICE)}).\n"
+                                                f"تم إيقاف التجديد التلقائي وسينتهي الاشتراك خلال 3 أيام.\n\n"
+                                                f"👉 يرجى استخدام /deposit لشحن الرصيد ثم إعادة تفعيل التجديد التلقائي من /mynumbers للاحتفاظ بالرقم."
                                             )
                                             asyncio.run_coroutine_threadsafe(
                                                 app.bot.send_message(chat_id=user_id, text=warning_msg, parse_mode='Markdown'),
@@ -957,9 +975,15 @@ def sync_and_renew_worker(app: Application, loop: asyncio.AbstractEventLoop):
                                                     update_number_expiry(num['id'], server_expiry)
                                                     
                                                     warning_msg = (
-                                                        f"⚠️ *Auto-Renewal Warning!*\n\nAuto-renew is disabled and subscription will be cancelled in 1 day for `+{num['number']}`."
+                                                        f"⚠️ *Auto-Renewal & Recharge Notice!*\n\n"
+                                                        f"Your balance is too low to auto-renew `+{num['number']}` (Basic - {format_currency(PVADEALS_PRICE)} required).\n"
+                                                        f"Auto-renew has been disabled and your subscription will expire in 3 days.\n\n"
+                                                        f"👉 Please use /deposit to add funds and re-enable auto-renew in /mynumbers if you wish to keep this number active."
                                                         if lang == 'en' else
-                                                        f"⚠️ *تحذير التجديد التلقائي!*\n\nتم تعطيل التجديد التلقائي وسيتم إلغاء الاشتراك خلال يوم واحد للرقم `+{num['number']}`."
+                                                        f"⚠️ *تنبيه شحن الرصيد والتجديد التلقائي!*\n\n"
+                                                        f"رصيدك الحالي غير كافٍ لتجديد الرقم `+{num['number']}` (عادي - المطلوب: {format_currency(PVADEALS_PRICE)}).\n"
+                                                        f"تم إيقاف التجديد التلقائي وسينتهي الاشتراك خلال 3 أيام.\n\n"
+                                                        f"👉 يرجى استخدام /deposit لشحن الرصيد ثم إعادة تفعيل التجديد التلقائي من /mynumbers للاحتفاظ بالرقم."
                                                     )
                                                     asyncio.run_coroutine_threadsafe(
                                                         app.bot.send_message(chat_id=user_id, text=warning_msg, parse_mode='Markdown'),
