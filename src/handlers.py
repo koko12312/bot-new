@@ -244,12 +244,11 @@ async def process_rent(update: Update, context: ContextTypes.DEFAULT_TYPE, provi
 async def mynumbers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = await asyncio.to_thread(get_user, user_id)
-    if not user:
-        await update.effective_message.reply_text("You don't have an account yet. Use /start first.")
-        return
-
-    lang = user['language'] or 'en'
+    lang = user['language'] if user and user['language'] else 'en'
     s = STRINGS[lang]
+    if not user:
+        await update.effective_message.reply_text(s['no_account'])
+        return
 
     numbers = await asyncio.to_thread(get_user_numbers, user_id)
     if not numbers:
@@ -316,17 +315,19 @@ async def mynumbers(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def sync_numbers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = await asyncio.to_thread(get_user, user_id)
+    lang = user['language'] if user and user['language'] else 'en'
+    s = STRINGS[lang]
     if not user:
-        await update.effective_message.reply_text("You don't have an account yet.")
+        await update.effective_message.reply_text(s['no_account'])
         return
 
-    await update.effective_message.reply_text("🔄 Refreshing your numbers... please wait.")
+    await update.effective_message.reply_text(s['sync_refreshing'])
     
     try:
         # Get user's numbers from local DB
         local_numbers = await asyncio.to_thread(get_user_numbers, user_id)
         if not local_numbers:
-            await update.effective_message.reply_text("You don't have any active numbers to sync.")
+            await update.effective_message.reply_text(s['sync_no_numbers'])
             return
 
         sync_count = 0
@@ -392,12 +393,12 @@ async def sync_numbers_command(update: Update, context: ContextTypes.DEFAULT_TYP
                 else:
                     logging.warning(f"Could not sync number {num['number']}: {e}")
 
-        await update.effective_message.reply_text(f"✅ Refresh complete! Updated {sync_count} numbers.")
+        await update.effective_message.reply_text(s['sync_complete'].format(count=sync_count))
         await mynumbers(update, context)
 
     except Exception as e:
         logging.error(f"Sync failed: {e}")
-        await update.effective_message.reply_text("❌ Refresh failed. Please try again later.")
+        await update.effective_message.reply_text(s['sync_failed'])
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -417,7 +418,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             receipt_file_type = 'document'
             
         if not receipt_file_id:
-            await update.effective_message.reply_text("❌ Please upload your payment receipt as a photo, screenshot, or document.")
+            await update.effective_message.reply_text(s['doc_upload_error'])
             return
             
         amt = context.user_data.pop('sham_amt')
@@ -447,7 +448,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
-    await update.effective_message.reply_text("I didn't expect a document or photo. Use the menu or /help.")
+    await update.effective_message.reply_text(s['doc_unexpected'])
 
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -679,16 +680,11 @@ async def admin_nums_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, ta
     await update.callback_query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.effective_message.reply_text(
-        "Available commands:\n"
-        "/start - Main menu\n"
-        "/profile - View your balance and referral link\n"
-        "/deposit - Add funds to your account\n"
-        "/rent - Purchase a WhatsApp rental\n"
-        "/mynumbers - Manage your numbers and retrieve codes\n"
-        "/sync - Refresh your numbers status\n"
-        "/help - Show this message"
-    )
+    user_id = update.effective_user.id
+    user = await asyncio.to_thread(get_user, user_id)
+    lang = user['language'] if user and user['language'] else 'en'
+    s = STRINGS[lang]
+    await update.effective_message.reply_text(s['help_title'], parse_mode='Markdown')
 
 def sync_and_renew_worker(app: Application, loop: asyncio.AbstractEventLoop):
     """Worker function to handle auto-renewals in a separate thread."""
@@ -1471,7 +1467,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         amount = float(amount_str)
         invoice_data = await asyncio.to_thread(create_invoice, amount, user_id)
         if not invoice_data:
-            await query.edit_message_text("Unable to create a deposit right now. Please try again later.")
+            await query.edit_message_text(s['deposit_create_fail'])
             return
 
         invoice_url = invoice_data.get('invoice_url') or invoice_data.get('invoiceUrl')
@@ -1648,7 +1644,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await asyncio.to_thread(update_auto_renew, number_id, user_id, 0)
             
             await query.edit_message_text(
-                "🛑 *Subscription Cancelled*" if lang == 'en' else "🛑 *تم إلغاء الاشتراك*",
+                s['sub_cancelled_title'],
                 parse_mode='Markdown'
             )
         return
@@ -1681,7 +1677,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await asyncio.to_thread(update_auto_renew, number_id, user_id, 1)
             
             await query.edit_message_text(
-                "🔄 *Auto-Renewal Enabled*" if lang == 'en' else "🔄 *تم تفعيل التجديد*",
+                s['sub_enabled_title'],
                 parse_mode='Markdown'
             )
         return
@@ -1691,7 +1687,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         number_row = await asyncio.to_thread(get_number_record, number_id, user_id)
         
         if not number_row:
-            await query.edit_message_text("❌ Number not found or does not belong to you.")
+            await query.edit_message_text(s['number_not_found'])
             return
 
         # NEW REFUND SAFETY CHECK
@@ -1755,7 +1751,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         number_id = int(data.split('_', 1)[1])
         number_row = await asyncio.to_thread(get_number_record, number_id, user_id)
         if not number_row:
-            await query.edit_message_text("This number is not found or does not belong to you.")
+            await query.edit_message_text(s['number_not_found'])
             return
 
         request_time = datetime.datetime.now(datetime.timezone.utc)
@@ -1839,7 +1835,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 await update.effective_message.reply_text(s['shamcash_receipt'], parse_mode='Markdown')
                 context.user_data['user_action'] = 'shamcash_receipt'
             except ValueError:
-                await update.effective_message.reply_text("❌ Please enter a valid number.")
+                await update.effective_message.reply_text(s['invalid_number'])
             return
 
     # --- ADMIN STATE HANDLING ---
@@ -2028,5 +2024,5 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     # Normal user message handling
-    await update.effective_message.reply_text("I didn't understand that. Use the menu or /help to see available commands.")
+    await update.effective_message.reply_text(s['unknown_input'])
 

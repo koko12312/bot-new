@@ -127,7 +127,21 @@ STRINGS = {
         'label_expired': "Expired",
         'label_unknown': "Unknown",
         'label_ref_link': "🔗 *Referral link:*",
-        'label_your_ref_code': "Your referral code: {code}"
+        'label_your_ref_code': "Your referral code: {code}",
+        'no_account': "You don't have an account yet. Use /start first.",
+        'sync_refreshing': "🔄 Refreshing your numbers... please wait.",
+        'sync_no_numbers': "You don't have any active numbers to sync.",
+        'sync_complete': "✅ Refresh complete! Updated {count} numbers.",
+        'sync_failed': "❌ Refresh failed. Please try again later.",
+        'doc_unexpected': "I didn't expect a document or photo. Use the menu or /help.",
+        'doc_upload_error': "❌ Please upload your payment receipt as a photo, screenshot, or document.",
+        'invalid_number': "❌ Please enter a valid number.",
+        'deposit_create_fail': "Unable to create a deposit right now. Please try again later.",
+        'number_not_found': "❌ Number not found or does not belong to you.",
+        'sub_cancelled_title': "🛑 *Subscription Cancelled*",
+        'sub_enabled_title': "🔄 *Auto-Renewal Enabled*",
+        'unknown_input': "I didn't understand that. Use the menu or /help to see available commands.",
+        'help_title': "📖 *Available Commands:*\n\n/start - Main menu\n/profile - View balance and referral link\n/deposit - Add funds to your account\n/rent - Purchase a WhatsApp rental\n/mynumbers - Manage numbers & get codes\n/sync - Refresh numbers status\n/help - Show this message"
     },
     'ar': {
         'welcome': "👋 *أهلاً بك، {name}!*\n\n💰 *الرصيد:* {balance}\n\n🚀 اختر خيارًا أدناه للبدء أو استخدم الأوامر في القائمة.\n\n🎁 *برنامج الإحالة:* شارك رابطك واربح {bonus}$ عند أول إيداع لصديقك!\n🔗 {link}",
@@ -187,7 +201,21 @@ STRINGS = {
         'label_expired': "منتهي",
         'label_unknown': "غير معروف",
         'label_ref_link': "🔗 *رابط الإحالة الخاص بك:*",
-        'label_your_ref_code': "كود الإحالة الخاص بك: {code}"
+        'label_your_ref_code': "كود الإحالة الخاص بك: {code}",
+        'no_account': "ليس لديك حساب بعد. يرجى استخدام /start أولاً.",
+        'sync_refreshing': "🔄 جاري تحديث أرقامك... يرجى الانتظار.",
+        'sync_no_numbers': "ليس لديك أي أرقام نشطة للتحديث.",
+        'sync_complete': "✅ اكتمل التحديث! تم تحديث {count} من الأرقام.",
+        'sync_failed': "❌ فشل التحديث. يرجى المحاولة لاحقاً.",
+        'doc_unexpected': "لم أكن أتوقع إرسال مستند أو صورة. يرجى استخدام القائمة أو /help.",
+        'doc_upload_error': "❌ يرجى رفع إيصال الدفع كصورة أو لقطة شاشة أو مستند.",
+        'invalid_number': "❌ يرجى إدخال رقم صحيح.",
+        'deposit_create_fail': "تعذر إنشاء الإيداع حالياً. يرجى المحاولة لاحقاً.",
+        'number_not_found': "❌ الرقم غير موجود أو لا ينتمي إلى حسابك.",
+        'sub_cancelled_title': "🛑 *تم إلغاء الاشتراك*",
+        'sub_enabled_title': "🔄 *تم تفعيل التجديد*",
+        'unknown_input': "لم أفهم ذلك. استخدم القائمة أو /help لعرض الأوامر المتاحة.",
+        'help_title': "📖 *الأوامر المتاحة:*\n\n/start - القائمة الرئيسية\n/profile - عرض رصيدك ورابط الإحالة\n/deposit - شحن رصيد في حسابك\n/rent - استئجار رقم واتساب\n/mynumbers - إدارة أرقامك واستلام الأكواد\n/sync - تحديث حالة الأرقام\n/help - عرض هذه التعليمات"
     }
 }
 
