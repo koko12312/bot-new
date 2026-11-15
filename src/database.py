@@ -9,9 +9,29 @@ from providers import pva_client
 try:
     import psycopg2
     import psycopg2.extras
+    import psycopg2.pool
+    import psycopg2.extensions
     HAVE_PSYCOPG2 = True
 except ImportError:
     HAVE_PSYCOPG2 = False
+
+PG_POOL = None
+
+def get_pg_pool():
+    global PG_POOL
+    if PG_POOL is None and DATABASE_URL and HAVE_PSYCOPG2:
+        try:
+            sslmode = "require" if ("render.com" in DATABASE_URL or "neon.tech" in DATABASE_URL) else "prefer"
+            PG_POOL = psycopg2.pool.ThreadedConnectionPool(
+                minconn=1,
+                maxconn=20,
+                dsn=DATABASE_URL,
+                sslmode=sslmode
+            )
+            logging.info("Initialized PostgreSQL ThreadedConnectionPool.")
+        except Exception as e:
+            logging.error(f"Failed to initialize PostgreSQL pool: {e}")
+    return PG_POOL
 
 class PGRow(dict):
     """Row object that mimics sqlite3.Row supporting both key and index access."""
@@ -29,18 +49,44 @@ class PGRow(dict):
 
 class PGConnection:
     """Connection wrapper that translates SQLite syntax to PostgreSQL."""
-    def __init__(self, raw_conn):
+    def __init__(self, raw_conn, pool_ref=None):
         self._conn = raw_conn
+        self._pool = pool_ref
+        self._closed = False
+
     def cursor(self):
         return PGCursor(self._conn.cursor())
+
     def execute(self, sql, params=None):
         cur = self.cursor()
         cur.execute(sql, params)
         return cur
+
     def commit(self):
-        self._conn.commit()
+        if not self._conn.closed:
+            self._conn.commit()
+
     def close(self):
-        self._conn.close()
+        if self._closed:
+            return
+        self._closed = True
+        if self._pool:
+            try:
+                # If transaction in progress or uncommitted, rollback before returning to pool
+                if not self._conn.closed and self._conn.status != psycopg2.extensions.STATUS_READY:
+                    self._conn.rollback()
+                self._pool.putconn(self._conn)
+            except Exception as e:
+                logging.error(f"Error returning connection to pool: {e}")
+                try:
+                    self._pool.putconn(self._conn, close=True)
+                except:
+                    pass
+        else:
+            try:
+                self._conn.close()
+            except:
+                pass
 
 class PGCursor:
     def __init__(self, raw_cursor):
@@ -71,8 +117,17 @@ class PGCursor:
 
 def get_db_connection():
     if DATABASE_URL and HAVE_PSYCOPG2:
+        pool_inst = get_pg_pool()
+        if pool_inst:
+            try:
+                raw = pool_inst.getconn()
+                if raw.closed:
+                    pool_inst.putconn(raw, close=True)
+                    raw = pool_inst.getconn()
+                return PGConnection(raw, pool_ref=pool_inst)
+            except Exception as e:
+                logging.error(f"Failed to acquire connection from pool ({e}), attempting direct connection.")
         try:
-            # If Neon, Render host, or external cloud DB, connect with appropriate sslmode
             sslmode = "require" if ("render.com" in DATABASE_URL or "neon.tech" in DATABASE_URL) else "prefer"
             raw = psycopg2.connect(DATABASE_URL, sslmode=sslmode)
             return PGConnection(raw)
