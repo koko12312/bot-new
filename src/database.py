@@ -72,8 +72,8 @@ class PGCursor:
 def get_db_connection():
     if DATABASE_URL and HAVE_PSYCOPG2:
         try:
-            # If internal render host or local host, connect with appropriate sslmode
-            sslmode = "require" if "render.com" in DATABASE_URL else "prefer"
+            # If Neon, Render host, or external cloud DB, connect with appropriate sslmode
+            sslmode = "require" if ("render.com" in DATABASE_URL or "neon.tech" in DATABASE_URL) else "prefer"
             raw = psycopg2.connect(DATABASE_URL, sslmode=sslmode)
             return PGConnection(raw)
         except Exception as e:

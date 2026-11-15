@@ -19,6 +19,9 @@ from textverified.data.dtypes import NumberType, ReservationType, ReservationCap
 
 
 # --- LOAD ENVIRONMENT VARIABLES ---
+local_env = os.path.join(os.path.dirname(__file__), '../.env.local')
+if os.path.exists(local_env):
+    load_dotenv(local_env)
 load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
