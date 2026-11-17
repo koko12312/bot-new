@@ -146,9 +146,12 @@ async def rent(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = user['language'] or 'en'
     s = STRINGS[lang]
 
+    tv_price = get_service_price()
+    pva_price = get_pvadeals_price()
+
     keyboard = [
-        [InlineKeyboardButton(s['btn_provider_tv'].format(price=format_currency(SERVICE_PRICE)), callback_data="rent_tv")],
-        [InlineKeyboardButton(s['btn_provider_pva'].format(price=format_currency(PVADEALS_PRICE)), callback_data="rent_pva")]
+        [InlineKeyboardButton(s['btn_provider_tv'].format(price=format_currency(tv_price)), callback_data="rent_tv")],
+        [InlineKeyboardButton(s['btn_provider_pva'].format(price=format_currency(pva_price)), callback_data="rent_pva")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -166,7 +169,7 @@ async def process_rent(update: Update, context: ContextTypes.DEFAULT_TYPE, provi
     
     query = update.callback_query
     
-    price = PVADEALS_PRICE if provider == 'pva' else SERVICE_PRICE
+    price = get_pvadeals_price() if provider == 'pva' else get_service_price()
     
     if user['balance'] < price:
         keyboard = [[InlineKeyboardButton(s['btn_deposit'], callback_data="main_deposit")]]
@@ -208,8 +211,10 @@ async def process_rent(update: Update, context: ContextTypes.DEFAULT_TYPE, provi
             res = await asyncio.to_thread(pva_client.purchase_ltr, whatsapp_svc['_id'])
             if res and res.get('success'):
                 data = res.get('data', {})
-                # Normalize number with US country code (1XXXXXXXXXX)
-                pva_number = normalize_us_e164(data.get('number', ''))
+                # Strip '+' from number if present to avoid ++ in UI
+                pva_number = data.get('number', '')
+                if pva_number.startswith('+'):
+                    pva_number = pva_number[1:]
                     
                 order = {
                     "id": data.get('_id'),
@@ -224,14 +229,10 @@ async def process_rent(update: Update, context: ContextTypes.DEFAULT_TYPE, provi
         await query.edit_message_text(s['rent_fail'])
         return
 
-    # Ensure final number has standard US country code (1XXXXXXXXXX)
-    final_number = normalize_us_e164(order.get('number'))
-    order['number'] = final_number
-
     await asyncio.to_thread(update_balance, user_id, -price)
     
     # Update add_number_record to include provider
-    await asyncio.to_thread(add_number_record, user_id, final_number, str(order.get('id')), 'whatsapp', order.get('expires_at'), order.get('status', 'active'), provider)
+    await asyncio.to_thread(add_number_record, user_id, order.get('number'), str(order.get('id')), 'whatsapp', order.get('expires_at'), order.get('status', 'active'), provider)
 
     expiry_date = datetime.datetime.fromisoformat(order.get('expires_at')).strftime('%Y-%m-%d')
     await query.edit_message_text(
@@ -469,6 +470,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
              InlineKeyboardButton("➖ Remove Credit", callback_data="admin_menu_debit")],
             [InlineKeyboardButton("📱 View Numbers", callback_data="admin_menu_numbers"),
              InlineKeyboardButton("🗑 Remove Number", callback_data="admin_menu_removenum")],
+            [InlineKeyboardButton("💰 Adjust Prices", callback_data="admin_menu_prices")],
             [InlineKeyboardButton("📥 Pending ShamCash", callback_data="admin_pending_shamcash")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -482,11 +484,14 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return u_count, a_nums
 
         user_count, active_nums = await asyncio.to_thread(get_stats)
+        tv_price = get_service_price()
+        pva_price = get_pvadeals_price()
 
         text = (
             f"👨‍💼 *Admin Dashboard*\n\n"
             f"👥 *Total Users:* `{user_count}`\n"
-            f"📱 *Active Rentals:* `{active_nums}`\n\n"
+            f"📱 *Active Rentals:* `{active_nums}`\n"
+            f"💰 *Current Prices:* Premium `${tv_price:.2f}` | Basic `${pva_price:.2f}`\n\n"
             f"Select an action or use `/admin help` for text commands:"
         )
 
@@ -505,12 +510,67 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "`/admin credit <ID/@user> <amt>` - Add credit\n"
             "`/admin debit <ID/@user> <amt>` - Remove credit\n"
             "`/admin numbers <ID/@user>` - View active numbers\n"
-            "`/admin addnumber <ID/@user> <num> <verif_id> [tv/pva]` - Link number manually"
+            "`/admin addnumber <ID/@user> <num> <verif_id> [tv/pva]` - Link number manually\n"
+            "`/admin prices` - View and manage current service prices\n"
+            "`/admin setprice <tv/pva> <amount>` - Set rental price (e.g. `/admin setprice tv 14`)"
         )
         await update.effective_message.reply_text(help_text, parse_mode='Markdown')
         return
 
-    if action not in ['view', 'credit', 'debit', 'numbers', 'addnumber']:
+    if action == 'prices':
+        tv_p = get_service_price()
+        pva_p = get_pvadeals_price()
+        keyboard = [
+            [InlineKeyboardButton("✏️ Set Premium (TV) Price", callback_data="admin_setprice_prompt_tv")],
+            [InlineKeyboardButton("✏️ Set Basic (PVA) Price", callback_data="admin_setprice_prompt_pva")],
+            [InlineKeyboardButton("🔙 Back to Dashboard", callback_data="admin_dashboard_back")]
+        ]
+        text = (
+            f"💰 *Pricing Configuration*\n\n"
+            f"🌟 *Premium WhatsApp (TextVerified):* `${tv_p:.2f}`\n"
+            f"⚡ *Basic WhatsApp (PVADeals):* `${pva_p:.2f}`\n\n"
+            f"Tap a service below to change its price, or use:\n"
+            f"`/admin setprice tv <amount>`\n"
+            f"`/admin setprice pva <amount>`"
+        )
+        await update.effective_message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        return
+
+    if action == 'setprice':
+        if len(args) < 3:
+            await update.effective_message.reply_text("Usage: `/admin setprice <tv/pva> <amount>`\nExample: `/admin setprice tv 14.50`", parse_mode='Markdown')
+            return
+        target_service = args[1].lower()
+        if target_service not in ['tv', 'textverified', 'pva', 'pvadeals']:
+            await update.effective_message.reply_text("❌ Service must be `tv` (Premium) or `pva` (Basic).", parse_mode='Markdown')
+            return
+        try:
+            new_amount = float(args[2].lstrip('$'))
+            if new_amount <= 0:
+                raise ValueError
+        except ValueError:
+            await update.effective_message.reply_text("❌ Price must be a valid positive number (e.g. `12` or `14.50`).", parse_mode='Markdown')
+            return
+
+        setting_key = 'service_price' if target_service in ['tv', 'textverified'] else 'pvadeals_price'
+        service_label = "Premium WhatsApp (TextVerified)" if target_service in ['tv', 'textverified'] else "Basic WhatsApp (PVADeals)"
+        set_setting(setting_key, str(new_amount))
+        
+        keyboard = [
+            [InlineKeyboardButton("💰 View All Prices", callback_data="admin_menu_prices")],
+            [InlineKeyboardButton("🔙 Back to Dashboard", callback_data="admin_dashboard_back")]
+        ]
+        await update.effective_message.reply_text(
+            f"✅ *Price Updated Successfully!*\n\n"
+            f"🛠 *Service:* {service_label}\n"
+            f"💰 *New Price:* `${new_amount:.2f}`\n\n"
+            f"All bot menus and renewal calculations have been updated immediately.",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        return
+
+    if action not in ['view', 'credit', 'debit', 'numbers', 'addnumber', 'prices', 'setprice']:
         await update.effective_message.reply_text("Unknown admin action. Use `/admin help` for commands.")
         return
 
@@ -559,7 +619,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(args) < 4:
             await update.effective_message.reply_text("Usage: `/admin addnumber <target> <number> <verification_id> [tv/pva]`")
             return
-        phone_number = normalize_us_e164(args[2])
+        phone_number = args[2]
         verification_id = args[3]
         provider = args[4].lower() if len(args) > 4 else 'tv'
         
@@ -758,6 +818,7 @@ def sync_and_renew_worker(app: Application, loop: asyncio.AbstractEventLoop):
                     # --- PROACTIVE SAFETY CHECK for TextVerified ---
                     user = get_user(user_id)
                     lang = user['language'] or 'en'
+                    current_tv_price = get_service_price()
                     
                     if not tv_expiry_dt and num['expires_at']:
                         try:
@@ -770,7 +831,7 @@ def sync_and_renew_worker(app: Application, loop: asyncio.AbstractEventLoop):
                         now = datetime.datetime.now(tv_expiry_dt.tzinfo) if tv_expiry_dt.tzinfo else datetime.datetime.now(datetime.timezone.utc)
                         time_diff = tv_expiry_dt - now
                         if time_diff.total_seconds() <= 259200: # <= 3 days (72 hours)
-                            if user['balance'] < SERVICE_PRICE:
+                            if user['balance'] < current_tv_price:
                                 logging.warning(f"Low balance for TV {num['number']}. Disabling server-side auto-renew (3 days notice).")
                                 try:
                                     textverified.reservations.update_renewable(verification_id, include_for_renewal=False)
@@ -780,12 +841,12 @@ def sync_and_renew_worker(app: Application, loop: asyncio.AbstractEventLoop):
                                     
                                     warning_msg = (
                                         f"⚠️ *Auto-Renewal & Recharge Notice!*\n\n"
-                                        f"Your balance is too low to auto-renew `+{num['number']}` ({format_currency(SERVICE_PRICE)} required).\n"
+                                        f"Your balance is too low to auto-renew `+{num['number']}` ({format_currency(current_tv_price)} required).\n"
                                         f"Auto-renew has been disabled and your subscription will expire in 3 days.\n\n"
                                         f"👉 Please use /deposit to add funds and re-enable auto-renew in /mynumbers if you wish to keep this number active."
                                         if lang == 'en' else
                                         f"⚠️ *تنبيه شحن الرصيد والتجديد التلقائي!*\n\n"
-                                        f"رصيدك الحالي غير كافٍ لتجديد الرقم `+{num['number']}` (المطلوب: {format_currency(SERVICE_PRICE)}).\n"
+                                        f"رصيدك الحالي غير كافٍ لتجديد الرقم `+{num['number']}` (المطلوب: {format_currency(current_tv_price)}).\n"
                                         f"تم إيقاف التجديد التلقائي وسينتهي الاشتراك خلال 3 أيام.\n\n"
                                         f"👉 يرجى استخدام /deposit لشحن الرصيد ثم إعادة تفعيل التجديد التلقائي من /mynumbers للاحتفاظ بالرقم."
                                     )
@@ -810,14 +871,14 @@ def sync_and_renew_worker(app: Application, loop: asyncio.AbstractEventLoop):
                             if new_expiry > old_expiry:
                                 # If auto-renew was ON in the bot, check balance and deduct
                                 if num['auto_renew']:
-                                    if user['balance'] >= SERVICE_PRICE:
-                                        update_balance(user_id, -SERVICE_PRICE)
+                                    if user['balance'] >= current_tv_price:
+                                        update_balance(user_id, -current_tv_price)
                                         update_number_expiry(num['id'], tv_expiry)
                                         
                                         renewal_msg = (
-                                            f"🔄 *Auto-Renewal Success!*\n\nYour WhatsApp number `+{num['number']}` has been renewed.\n💰 Cost: {format_currency(SERVICE_PRICE)}\n📅 New Expiry: `{tv_expiry[:10]}`"
+                                            f"🔄 *Auto-Renewal Success!*\n\nYour WhatsApp number `+{num['number']}` has been renewed.\n💰 Cost: {format_currency(current_tv_price)}\n📅 New Expiry: `{tv_expiry[:10]}`"
                                             if lang == 'en' else
-                                            f"🔄 *تم التجديد التلقائي بنجاح!*\n\nتم تجديد رقم الواتساب الخاص بك `+{num['number']}`.\n💰 التكلفة: {format_currency(SERVICE_PRICE)}\n📅 تنتهي الصلاحية في: `{tv_expiry[:10]}`"
+                                            f"🔄 *تم التجديد التلقائي بنجاح!*\n\nتم تجديد رقم الواتساب الخاص بك `+{num['number']}`.\n💰 التكلفة: {format_currency(current_tv_price)}\n📅 تنتهي الصلاحية في: `{tv_expiry[:10]}`"
                                         )
                                         
                                         asyncio.run_coroutine_threadsafe(
@@ -834,12 +895,12 @@ def sync_and_renew_worker(app: Application, loop: asyncio.AbstractEventLoop):
                                         
                                         warning_msg = (
                                             f"⚠️ *Auto-Renewal & Recharge Notice!*\n\n"
-                                            f"Your balance is too low to auto-renew `+{num['number']}` ({format_currency(SERVICE_PRICE)} required).\n"
+                                            f"Your balance is too low to auto-renew `+{num['number']}` ({format_currency(current_tv_price)} required).\n"
                                             f"Auto-renew has been disabled and your subscription will expire in 3 days.\n\n"
                                             f"👉 Please use /deposit to add funds and re-enable auto-renew in /mynumbers if you wish to keep this number active."
                                             if lang == 'en' else
                                             f"⚠️ *تنبيه شحن الرصيد والتجديد التلقائي!*\n\n"
-                                            f"رصيدك الحالي غير كافٍ لتجديد الرقم `+{num['number']}` (المطلوب: {format_currency(SERVICE_PRICE)}).\n"
+                                            f"رصيدك الحالي غير كافٍ لتجديد الرقم `+{num['number']}` (المطلوب: {format_currency(current_tv_price)}).\n"
                                             f"تم إيقاف التجديد التلقائي وسينتهي الاشتراك خلال 3 أيام.\n\n"
                                             f"👉 يرجى استخدام /deposit لشحن الرصيد ثم إعادة تفعيل التجديد التلقائي من /mynumbers للاحتفاظ بالرقم."
                                         )
@@ -906,9 +967,10 @@ def sync_and_renew_worker(app: Application, loop: asyncio.AbstractEventLoop):
                                 user = get_user(user_id)
                                 lang = user['language'] or 'en'
                                 time_diff = server_expiry_dt - now
+                                current_pva_price = get_pvadeals_price()
                                 
                                 if time_diff.total_seconds() <= 259200 and num['auto_renew']:
-                                    if user['balance'] < PVADEALS_PRICE:
+                                    if user['balance'] < current_pva_price:
                                         logging.warning(f"Low balance for PVA {num['number']}. Disabling server-side auto-renew (3 days notice).")
                                         try:
                                             pva_client.set_auto_renew(verification_id, False)
@@ -918,12 +980,12 @@ def sync_and_renew_worker(app: Application, loop: asyncio.AbstractEventLoop):
                                             
                                             warning_msg = (
                                                 f"⚠️ *Auto-Renewal & Recharge Notice!*\n\n"
-                                                f"Your balance is too low to auto-renew `+{num['number']}` (Basic - {format_currency(PVADEALS_PRICE)} required).\n"
+                                                f"Your balance is too low to auto-renew `+{num['number']}` (Basic - {format_currency(current_pva_price)} required).\n"
                                                 f"Auto-renew has been disabled and your subscription will expire in 3 days.\n\n"
                                                 f"👉 Please use /deposit to add funds and re-enable auto-renew in /mynumbers if you wish to keep this number active."
                                                 if lang == 'en' else
                                                 f"⚠️ *تنبيه شحن الرصيد والتجديد التلقائي!*\n\n"
-                                                f"رصيدك الحالي غير كافٍ لتجديد الرقم `+{num['number']}` (عادي - المطلوب: {format_currency(PVADEALS_PRICE)}).\n"
+                                                f"رصيدك الحالي غير كافٍ لتجديد الرقم `+{num['number']}` (عادي - المطلوب: {format_currency(current_pva_price)}).\n"
                                                 f"تم إيقاف التجديد التلقائي وسينتهي الاشتراك خلال 3 أيام.\n\n"
                                                 f"👉 يرجى استخدام /deposit لشحن الرصيد ثم إعادة تفعيل التجديد التلقائي من /mynumbers للاحتفاظ بالرقم."
                                             )
@@ -945,14 +1007,14 @@ def sync_and_renew_worker(app: Application, loop: asyncio.AbstractEventLoop):
                                         if server_expiry_dt > old_dt:
                                             # Server renewed it!
                                             if num['auto_renew']:
-                                                if user['balance'] >= PVADEALS_PRICE:
-                                                    update_balance(user_id, -PVADEALS_PRICE)
+                                                if user['balance'] >= current_pva_price:
+                                                    update_balance(user_id, -current_pva_price)
                                                     update_number_expiry(num['id'], server_expiry)
                                                     
                                                     renewal_msg = (
-                                                        f"🔄 *Auto-Renewal Success!*\n\nYour WhatsApp number `+{num['number']}` (Basic) has been renewed.\n💰 Cost: {format_currency(PVADEALS_PRICE)}\n📅 New Expiry: `{server_expiry[:10]}`"
+                                                        f"🔄 *Auto-Renewal Success!*\n\nYour WhatsApp number `+{num['number']}` (Basic) has been renewed.\n💰 Cost: {format_currency(current_pva_price)}\n📅 New Expiry: `{server_expiry[:10]}`"
                                                         if lang == 'en' else
-                                                        f"🔄 *تم التجديد التلقائي بنجاح!*\n\nتم تجديد رقم الواتساب (عادي) الخاص بك `+{num['number']}`.\n💰 التكلفة: {format_currency(PVADEALS_PRICE)}\n📅 تنتهي الصلاحية في: `{server_expiry[:10]}`"
+                                                        f"🔄 *تم التجديد التلقائي بنجاح!*\n\nتم تجديد رقم الواتساب (عادي) الخاص بك `+{num['number']}`.\n💰 التكلفة: {format_currency(current_pva_price)}\n📅 تنتهي الصلاحية في: `{server_expiry[:10]}`"
                                                     )
                                                     
                                                     asyncio.run_coroutine_threadsafe(
@@ -974,12 +1036,12 @@ def sync_and_renew_worker(app: Application, loop: asyncio.AbstractEventLoop):
                                                     
                                                     warning_msg = (
                                                         f"⚠️ *Auto-Renewal & Recharge Notice!*\n\n"
-                                                        f"Your balance is too low to auto-renew `+{num['number']}` (Basic - {format_currency(PVADEALS_PRICE)} required).\n"
+                                                        f"Your balance is too low to auto-renew `+{num['number']}` (Basic - {format_currency(current_pva_price)} required).\n"
                                                         f"Auto-renew has been disabled and your subscription will expire in 3 days.\n\n"
                                                         f"👉 Please use /deposit to add funds and re-enable auto-renew in /mynumbers if you wish to keep this number active."
                                                         if lang == 'en' else
                                                         f"⚠️ *تنبيه شحن الرصيد والتجديد التلقائي!*\n\n"
-                                                        f"رصيدك الحالي غير كافٍ لتجديد الرقم `+{num['number']}` (عادي - المطلوب: {format_currency(PVADEALS_PRICE)}).\n"
+                                                        f"رصيدك الحالي غير كافٍ لتجديد الرقم `+{num['number']}` (عادي - المطلوب: {format_currency(current_pva_price)}).\n"
                                                         f"تم إيقاف التجديد التلقائي وسينتهي الاشتراك خلال 3 أيام.\n\n"
                                                         f"👉 يرجى استخدام /deposit لشحن الرصيد ثم إعادة تفعيل التجديد التلقائي من /mynumbers للاحتفاظ بالرقم."
                                                     )
@@ -1208,6 +1270,44 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard.append([InlineKeyboardButton(f"❌ Remove +{number['number']}", callback_data=f"admin_do_remove_{number['id']}")])
         keyboard.append([InlineKeyboardButton("🔙 Back", callback_data=f"admin_user_manage_{t_id}")])
         await query.edit_message_text(f"🗑 Select number to remove for `{t_id}`:", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    if data == 'admin_menu_prices':
+        tv_p = get_service_price()
+        pva_p = get_pvadeals_price()
+        keyboard = [
+            [InlineKeyboardButton("✏️ Set Premium (TV) Price", callback_data="admin_setprice_prompt_tv")],
+            [InlineKeyboardButton("✏️ Set Basic (PVA) Price", callback_data="admin_setprice_prompt_pva")],
+            [InlineKeyboardButton("🔙 Back to Dashboard", callback_data="admin_dashboard_back")]
+        ]
+        text = (
+            f"💰 *Pricing Configuration*\n\n"
+            f"🌟 *Premium WhatsApp (TextVerified):* `${tv_p:.2f}`\n"
+            f"⚡ *Basic WhatsApp (PVADeals):* `${pva_p:.2f}`\n\n"
+            f"Select a service below to change its price, or use `/admin setprice <tv/pva> <amount>`:"
+        )
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        return
+
+    if data == 'admin_dashboard_back':
+        context.user_data.pop('admin_action', None)
+        context.user_data.pop('admin_state', None)
+        await admin_command(update, context)
+        return
+
+    if data.startswith('admin_setprice_prompt_'):
+        service_target = data.split('_')[3] # 'tv' or 'pva'
+        context.user_data['admin_state'] = f"awaiting_price_{service_target}"
+        service_name = "Premium WhatsApp (TextVerified)" if service_target == 'tv' else "Basic WhatsApp (PVADeals)"
+        current_p = get_service_price() if service_target == 'tv' else get_pvadeals_price()
+        keyboard = [[InlineKeyboardButton("🔙 Cancel", callback_data="admin_menu_prices")]]
+        await query.edit_message_text(
+            f"✏️ *Update Price for {service_name}*\n\n"
+            f"Current price: `${current_p:.2f}`\n\n"
+            f"Please type the new price in chat (e.g. `14` or `9.50`):",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
         return
 
     if data.startswith('admin_menu_'):
@@ -1566,11 +1666,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif action == 'refund':
             await query.edit_message_text("⏳ Processing refund on server...")
             try:
-                price = SERVICE_PRICE
+                price = get_service_price()
                 if number_row['provider'] in ['textverified', 'tv']:
                     await asyncio.to_thread(textverified.reservations.refund_renewable, number_row['verification_id'])
                 else:
-                    price = PVADEALS_PRICE
+                    price = get_pvadeals_price()
                     await asyncio.to_thread(pva_client.flag_number, number_row['verification_id'])
                     
                 def mark_refunded():
@@ -1717,11 +1817,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(s['refund_processing'])
         
         try:
-            price = SERVICE_PRICE
+            price = get_service_price()
             if number_row['provider'] == 'tv':
                 await asyncio.to_thread(textverified.reservations.refund_renewable, number_row['verification_id'])
             else:
-                price = PVADEALS_PRICE
+                price = get_pvadeals_price()
                 # PVADeals flagging/refund logic
                 await asyncio.to_thread(pva_client.flag_number, number_row['verification_id'])
             
@@ -1841,6 +1941,40 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             return
 
     # --- ADMIN STATE HANDLING ---
+    if context.user_data and context.user_data.get('admin_state'):
+        if not is_admin(user_id):
+            context.user_data.clear()
+            return
+        state = context.user_data.get('admin_state')
+        if state.startswith('awaiting_price_'):
+            service_target = state.split('_')[2] # 'tv' or 'pva'
+            try:
+                new_price = float(update.message.text.strip().lstrip('$'))
+                if new_price <= 0:
+                    raise ValueError
+            except ValueError:
+                await update.effective_message.reply_text("❌ Please enter a valid positive number (e.g. `12` or `14.50`).", parse_mode='Markdown')
+                return
+
+            context.user_data.pop('admin_state', None)
+            setting_key = 'service_price' if service_target == 'tv' else 'pvadeals_price'
+            service_name = "Premium WhatsApp (TextVerified)" if service_target == 'tv' else "Basic WhatsApp (PVADeals)"
+            await asyncio.to_thread(set_setting, setting_key, str(new_price))
+
+            keyboard = [
+                [InlineKeyboardButton("💰 View All Prices", callback_data="admin_menu_prices")],
+                [InlineKeyboardButton("🔙 Back to Dashboard", callback_data="admin_dashboard_back")]
+            ]
+            await update.effective_message.reply_text(
+                f"✅ *Price Updated Successfully!*\n\n"
+                f"🛠 *Service:* {service_name}\n"
+                f"💰 *New Price:* `${new_price:.2f}`\n\n"
+                f"The new price is active immediately on all rental and renewal flows.",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode='Markdown'
+            )
+            return
+
     if context.user_data and context.user_data.get('admin_action'):
         if not is_admin(user_id):
             logging.warning(f"Unauthorized admin state access by {user_id}")

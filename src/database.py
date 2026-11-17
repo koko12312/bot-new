@@ -72,7 +72,6 @@ class PGConnection:
         self._closed = True
         if self._pool:
             try:
-                # If transaction in progress or uncommitted, rollback before returning to pool
                 if not self._conn.closed and self._conn.status != psycopg2.extensions.STATUS_READY:
                     self._conn.rollback()
                 self._pool.putconn(self._conn)
@@ -91,6 +90,7 @@ class PGConnection:
 class PGCursor:
     def __init__(self, raw_cursor):
         self._cur = raw_cursor
+
     def execute(self, sql, params=None):
         sql = sql.replace('?', '%s')
         if 'INSERT OR IGNORE INTO' in sql:
@@ -102,17 +102,21 @@ class PGCursor:
         else:
             self._cur.execute(sql)
         return self
+
     def fetchone(self):
         row = self._cur.fetchone()
         if row is None:
             return None
         return PGRow(self._cur, row)
+
     def fetchall(self):
         rows = self._cur.fetchall()
         return [PGRow(self._cur, r) for r in rows]
+
     @property
     def rowcount(self):
         return self._cur.rowcount
+
     def close(self):
         self._cur.close()
 
@@ -208,6 +212,21 @@ def init_db():
                     referral_rewarded INTEGER DEFAULT 0
                 )
             ''')
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS bot_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT,
+                    updated_at TEXT
+                )
+            ''')
+            c.execute(
+                "INSERT INTO bot_settings (key, value, updated_at) VALUES (%s, %s, %s) ON CONFLICT (key) DO NOTHING;",
+                ('service_price', str(SERVICE_PRICE), get_timestamp())
+            )
+            c.execute(
+                "INSERT INTO bot_settings (key, value, updated_at) VALUES (%s, %s, %s) ON CONFLICT (key) DO NOTHING;",
+                ('pvadeals_price', str(PVADEALS_PRICE), get_timestamp())
+            )
             conn.commit()
             conn.close()
             logging.info("PostgreSQL database initialized successfully.")
@@ -311,8 +330,74 @@ def init_db():
         c.execute("ALTER TABLE manual_deposits ADD COLUMN receipt_file_type TEXT DEFAULT 'document'")
     except sqlite3.OperationalError:
         pass # Column already exists
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS bot_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            updated_at TEXT
+        )
+    ''')
+    c.execute(
+        "INSERT OR IGNORE INTO bot_settings (key, value, updated_at) VALUES (?, ?, ?)",
+        ('service_price', str(SERVICE_PRICE), get_timestamp())
+    )
+    c.execute(
+        "INSERT OR IGNORE INTO bot_settings (key, value, updated_at) VALUES (?, ?, ?)",
+        ('pvadeals_price', str(PVADEALS_PRICE), get_timestamp())
+    )
     conn.commit()
     conn.close()
+
+# --- IN-MEMORY CACHE FOR BOT SETTINGS ---
+_SETTINGS_CACHE = {}
+
+def get_setting(key: str, default=None):
+    global _SETTINGS_CACHE
+    if key in _SETTINGS_CACHE:
+        return _SETTINGS_CACHE[key]
+    try:
+        conn = get_db_connection()
+        row = conn.execute("SELECT value FROM bot_settings WHERE key = ?", (key,)).fetchone()
+        conn.close()
+        if row:
+            val = row[0] if isinstance(row, (list, tuple)) else row['value']
+            _SETTINGS_CACHE[key] = str(val)
+            return str(val)
+    except Exception as e:
+        logging.error(f"Error fetching setting '{key}': {e}")
+    return default
+
+def set_setting(key: str, value: str):
+    global _SETTINGS_CACHE
+    _SETTINGS_CACHE[key] = str(value)
+    try:
+        conn = get_db_connection()
+        conn.execute(
+            "INSERT INTO bot_settings (key, value, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at",
+            (key, str(value), get_timestamp())
+        )
+        conn.commit()
+        conn.close()
+        logging.info(f"Updated bot setting '{key}' = '{value}'")
+        return True
+    except Exception as e:
+        logging.error(f"Error setting '{key}': {e}")
+        return False
+
+def get_service_price() -> float:
+    try:
+        val = get_setting('service_price', SERVICE_PRICE)
+        return float(val)
+    except (ValueError, TypeError):
+        return float(SERVICE_PRICE)
+
+def get_pvadeals_price() -> float:
+    try:
+        val = get_setting('pvadeals_price', PVADEALS_PRICE)
+        return float(val)
+    except (ValueError, TypeError):
+        return float(PVADEALS_PRICE)
 
 def get_user(user_id: int):
     conn = get_db_connection()

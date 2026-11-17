@@ -154,3 +154,20 @@ ead_email supporting direct inbox reading via App Passwords for both krambek321
   - Discovered that TextVerified UI specifically displays the `tags` array rather than `userNotes`.
   - Created `tag_reservation_tv(reservation_id, user_tag)` in `src/providers.py` that sends both `tags: [user_tag]` and `userNotes: user_tag` via `POST /api/pub/v2/reservations/rental/renewable/{id}`.
   - Successfully tagged all 5 currently active TextVerified rentals in the database with their respective owners' Telegram usernames. Future rentals automatically inherit this tagging.
+
+## 10. Admin Dynamic Pricing Adjustment & Neon Settings Persistence (2026-11-17)
+- **Database Architecture (`bot_settings` table):**
+  - Created persistent `bot_settings (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT)` table in PostgreSQL (Neon) and SQLite fallback in `src/database.py`.
+  - Initialized default keys: `service_price` (Premium/TextVerified, default $12.00) and `pvadeals_price` (Basic/PVADeals, default $7.00).
+  - Implemented in-memory caching layer `_SETTINGS_CACHE` with sub-millisecond retrieval on high-throughput paths.
+  - Added `get_setting(key, default)`, `set_setting(key, value)`, `get_service_price()`, and `get_pvadeals_price()`.
+- **Dynamic Price Application Across Bot:**
+  - Replaced hardcoded static constants (`SERVICE_PRICE`, `PVADEALS_PRICE`) across rental selection (`/rent`), balance verification, deduction, auto-renewal safety alerts, background sync worker (`sync_and_renew_worker`), admin refunds, and user refunds.
+- **Admin Control UI & Direct Commands:**
+  - Added `💰 Adjust Prices` interactive button to the `/admin` control panel.
+  - Added interactive price adjustment menu with one-tap inline prompts: `✏️ Set Premium (TV) Price`, `✏️ Set Basic (PVA) Price`, and `🔙 Back to Dashboard`.
+  - Implemented interactive text input state handling in `handle_text_message` allowing admin to type the new price directly in chat with decimal validation and live confirmation.
+  - Added direct admin text commands: `/admin prices` to view active prices and `/admin setprice <tv/pva> <amount>` to update prices in a single command.
+- **Verification:**
+  - Verified live price updates, database persistence, and rollback via direct PostgreSQL script execution.
+  - Full codebase verified with `py_compile` (0 syntax errors).
