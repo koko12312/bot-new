@@ -208,10 +208,8 @@ async def process_rent(update: Update, context: ContextTypes.DEFAULT_TYPE, provi
             res = await asyncio.to_thread(pva_client.purchase_ltr, whatsapp_svc['_id'])
             if res and res.get('success'):
                 data = res.get('data', {})
-                # Strip '+' from number if present to avoid ++ in UI
-                pva_number = data.get('number', '')
-                if pva_number.startswith('+'):
-                    pva_number = pva_number[1:]
+                # Normalize number with US country code (1XXXXXXXXXX)
+                pva_number = normalize_us_e164(data.get('number', ''))
                     
                 order = {
                     "id": data.get('_id'),
@@ -226,10 +224,14 @@ async def process_rent(update: Update, context: ContextTypes.DEFAULT_TYPE, provi
         await query.edit_message_text(s['rent_fail'])
         return
 
+    # Ensure final number has standard US country code (1XXXXXXXXXX)
+    final_number = normalize_us_e164(order.get('number'))
+    order['number'] = final_number
+
     await asyncio.to_thread(update_balance, user_id, -price)
     
     # Update add_number_record to include provider
-    await asyncio.to_thread(add_number_record, user_id, order.get('number'), str(order.get('id')), 'whatsapp', order.get('expires_at'), order.get('status', 'active'), provider)
+    await asyncio.to_thread(add_number_record, user_id, final_number, str(order.get('id')), 'whatsapp', order.get('expires_at'), order.get('status', 'active'), provider)
 
     expiry_date = datetime.datetime.fromisoformat(order.get('expires_at')).strftime('%Y-%m-%d')
     await query.edit_message_text(
@@ -557,7 +559,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(args) < 4:
             await update.effective_message.reply_text("Usage: `/admin addnumber <target> <number> <verification_id> [tv/pva]`")
             return
-        phone_number = args[2]
+        phone_number = normalize_us_e164(args[2])
         verification_id = args[3]
         provider = args[4].lower() if len(args) > 4 else 'tv'
         

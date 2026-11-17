@@ -97,7 +97,10 @@ class PGCursor:
             sql = sql.replace('INSERT OR IGNORE INTO', 'INSERT INTO')
             if 'ON CONFLICT' not in sql:
                 sql += ' ON CONFLICT DO NOTHING'
-        self._cur.execute(sql, params or ())
+        if params is not None:
+            self._cur.execute(sql, params)
+        else:
+            self._cur.execute(sql)
         return self
     def fetchone(self):
         row = self._cur.fetchone()
@@ -532,10 +535,17 @@ def check_and_reward_referrer(user_id: int, deposit_type: str, deposit_id: int):
         conn.close()
 
 def add_number_record(user_id: int, number: str, verification_id: str, service: str = 'whatsapp', expires_at: str = None, status: str = 'active', provider: str = 'textverified'):
+    clean_number = str(number).lstrip('+')
+    digits = ''.join(c for c in clean_number if c.isdigit())
+    if len(digits) == 10:
+        clean_number = '1' + digits
+    elif len(digits) == 11 and digits.startswith('1'):
+        clean_number = digits
+
     conn = get_db_connection()
     conn.execute(
         "INSERT INTO numbers (user_id, number, verification_id, service, status, created_at, auto_renew, expires_at, provider) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (user_id, number, verification_id, service, status, get_timestamp(), 1, expires_at, provider)
+        (user_id, clean_number, verification_id, service, status, get_timestamp(), 1, expires_at, provider)
     )
     conn.commit()
     conn.close()

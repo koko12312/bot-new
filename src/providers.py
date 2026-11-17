@@ -37,7 +37,12 @@ class PVADealsClient:
             "duration": duration,
             "autoRenewEnable": True
         }
-        return self._post("purchase-ltr", data)
+        try:
+            return self._post("purchase-ltr", data)
+        except requests.exceptions.HTTPError as e:
+            if e.response is not None and e.response.status_code == 402:
+                logging.error("PVADeals balance insufficient (HTTP 402 Payment Required). Please top up PVADeals account balance.")
+            raise
 
     def get_ltr_details(self, request_id):
         return self._get(f"request/{request_id}")
@@ -58,6 +63,35 @@ pva_client = PVADealsClient(PVADEALS_API_KEY, PVADEALS_BASE_URL)
 
 
 # --- TEXTVERIFIED HELPERS ---
+
+def normalize_us_e164(phone):
+    """Normalizes a phone number to standard US E.164 digits without leading '+' (e.g. 1XXXXXXXXXX)."""
+    if not phone:
+        return ""
+    digits = "".join(c for c in str(phone) if c.isdigit())
+    if len(digits) == 10:
+        return "1" + digits
+    elif len(digits) == 11 and digits.startswith("1"):
+        return digits
+    return digits
+
+def tag_reservation_tv(reservation_id, user_tag):
+    """Tags a renewable reservation on TextVerified with userNotes and dashboard tags."""
+    if not user_tag or not reservation_id:
+        return False
+    try:
+        from textverified.action import _Action
+        client = textverified._get_static_instance()
+        tag_str = str(user_tag)
+        client._perform_action(
+            _Action("POST", f"/api/pub/v2/reservations/rental/renewable/{reservation_id}"),
+            json={"userNotes": tag_str, "tags": [tag_str]}
+        )
+        logging.info(f"Successfully tagged TextVerified reservation {reservation_id} with '{tag_str}'")
+        return True
+    except Exception as e:
+        logging.warning(f"Could not tag reservation {reservation_id} with {user_tag}: {e}")
+        return False
 
 def tv_headers():
     # Still used for any manual requests if needed, but library is preferred
@@ -98,11 +132,7 @@ def purchase_number(service_name, user_tag=None):
 
             # Tag reservation on TextVerified with user note/tag
             if user_tag:
-                try:
-                    textverified.reservations.update_renewable(res.id, user_notes=str(user_tag))
-                    logging.info(f"Tagged TextVerified reservation {res.id} with '{user_tag}'")
-                except Exception as e:
-                    logging.warning(f"Could not tag reservation {res.id} with {user_tag}: {e}")
+                tag_reservation_tv(res.id, user_tag)
 
             # Get full details of the newly created reservation
             details = textverified.reservations.details(res.id)
@@ -122,7 +152,7 @@ def purchase_number(service_name, user_tag=None):
             
             return {
                 "id": details.id,
-                "number": details.number,
+                "number": normalize_us_e164(details.number),
                 "status": details.state.value,
                 "expires_at": expiry
             }
