@@ -191,9 +191,8 @@ async def process_rent(update: Update, context: ContextTypes.DEFAULT_TYPE, provi
             await query.edit_message_text(s['rent_no_service'])
             return
         
-        # Tag reservation on TextVerified with user's Telegram username
-        username = update.effective_user.username or (user['username'] if user else None)
-        user_tag = f"@{username}" if username else f"User_{user_id}"
+        # Tag reservation on TextVerified with user's Telegram display name / username
+        user_tag = get_user_tag(user, update.effective_user)
         order = await asyncio.to_thread(purchase_number, whatsapp_targets[0]['id'], user_tag)
     else:
         # PVADeals logic
@@ -2074,6 +2073,10 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                     expiry = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=30)).isoformat()
                 
                 await asyncio.to_thread(add_number_record, t_id, num, v_id, expires_at=expiry, status=status, provider=provider)
+                if provider == 'tv':
+                    user_tag = get_user_tag(target_user)
+                    await asyncio.to_thread(tag_reservation_tv, v_id, user_tag)
+
                 await update.effective_message.reply_text(
                     f"✅ Successfully linked number `+{num}` ({provider.upper()}) to `{t_name}`.\n"
                     f"Status: `{status}`\nExpiry: `{expiry[:10]}`",

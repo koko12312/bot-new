@@ -75,6 +75,49 @@ def normalize_us_e164(phone):
         return digits
     return digits
 
+def get_user_tag(user_data, tg_user=None):
+    """
+    Derives the tag string for TextVerified.
+    Priority 1: Telegram display name (first_name, e.g. Alosh, Jafar, Koko)
+    Priority 2: Telegram @username
+    Priority 3: Fallback User_{user_id}
+    """
+    # 1. First name (Display Name)
+    if tg_user and getattr(tg_user, 'first_name', None):
+        name = str(tg_user.first_name).strip()
+        if name:
+            return name
+    if user_data:
+        try:
+            name = user_data['first_name'] if hasattr(user_data, '__getitem__') else getattr(user_data, 'first_name', None)
+            if name and str(name).strip():
+                return str(name).strip()
+        except (KeyError, TypeError):
+            pass
+
+    # 2. Username handle
+    if tg_user and getattr(tg_user, 'username', None):
+        u = str(tg_user.username).strip()
+        if u:
+            return f"@{u}" if not u.startswith('@') else u
+    if user_data:
+        try:
+            u = user_data['username'] if hasattr(user_data, '__getitem__') else getattr(user_data, 'username', None)
+            if u and str(u).strip():
+                u = str(u).strip()
+                return f"@{u}" if not u.startswith('@') else u
+        except (KeyError, TypeError):
+            pass
+
+    # 3. Fallback ID
+    uid = getattr(tg_user, 'id', None)
+    if not uid and user_data:
+        try:
+            uid = user_data['user_id'] if hasattr(user_data, '__getitem__') else getattr(user_data, 'user_id', None)
+        except (KeyError, TypeError):
+            pass
+    return f"User_{uid}" if uid else "User_Unknown"
+
 def tag_reservation_tv(reservation_id, user_tag):
     """Tags a renewable reservation on TextVerified with userNotes and dashboard tags."""
     if not user_tag or not reservation_id:
@@ -82,7 +125,7 @@ def tag_reservation_tv(reservation_id, user_tag):
     try:
         from textverified.action import _Action
         client = textverified._get_static_instance()
-        tag_str = str(user_tag)
+        tag_str = str(user_tag).strip()
         client._perform_action(
             _Action("POST", f"/api/pub/v2/reservations/rental/renewable/{reservation_id}"),
             json={"userNotes": tag_str, "tags": [tag_str]}

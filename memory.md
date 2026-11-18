@@ -171,3 +171,21 @@ ead_email supporting direct inbox reading via App Passwords for both krambek321
 - **Verification:**
   - Verified live price updates, database persistence, and rollback via direct PostgreSQL script execution.
   - Full codebase verified with `py_compile` (0 syntax errors).
+
+## 11. TextVerified Display Name Tagging & Retag Migration (2026-11-17)
+- **Tag Generation Logic (`get_user_tag` in `src/providers.py`):**
+  - Updated tag resolution order to prioritize user's Telegram display name (`first_name`, e.g. `Alosh`, `Jafar`, `Koko`) over obscure or missing `@username` handles.
+  - Fallback priority:
+    1. `first_name` (display name)
+    2. `@username` (handle)
+    3. `User_{user_id}` (unique ID fallback)
+- **Bot Integration:**
+  - Updated `process_rent` in `src/handlers.py` to tag newly purchased TextVerified rentals using `get_user_tag(user, update.effective_user)`.
+  - Updated `admin_add_number` in `src/handlers.py` so manual number links to users on TV automatically apply the display name tag.
+- **Active Rentals Retag Migration:**
+  - Executed `scratch/retag_tv_rentals.py` querying all active TextVerified numbers and updating them with their owners' display names via `POST /api/pub/v2/reservations/rental/renewable/{id}` with `{"userNotes": tag, "tags": [tag]}`.
+  - Verified via TextVerified Search Rental Tags API (`POST /api/pub/v2/reservations/rental/tags/search`):
+    - `lr_01M6BF2N4N7SX8RW7R86WKNVW3` (+14722080493) -> Tags: `['Jafar']`
+    - `lr_01KYSM9GDJ79T8WCQQX45C5QKP` (+112074495402) -> Tags: `['Alosh']`
+    - All other active numbers successfully tagged.
+
